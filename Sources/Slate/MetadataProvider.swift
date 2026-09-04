@@ -45,6 +45,12 @@ public struct Snapshot: Sendable, Equatable {
     public var posterURL: URL?
     public var backdropURL: URL?
     public var isAnime: Bool?
+    /// An age rating, as the provider spells it in the asked-for region: `TV-MA`,
+    /// `16`, `PG-13`.
+    public var contentRating: String?
+    /// A YouTube key, not a URL — a player wants the id.
+    public var trailerYouTubeID: String?
+    public var cast: [CastMember]?
     /// Names to search by, this provider's preferred order first.
     public var searchNames: [String]
 
@@ -62,6 +68,9 @@ public struct Snapshot: Sendable, Equatable {
         posterURL: URL? = nil,
         backdropURL: URL? = nil,
         isAnime: Bool? = nil,
+        contentRating: String? = nil,
+        trailerYouTubeID: String? = nil,
+        cast: [CastMember]? = nil,
         searchNames: [String] = []
     ) {
         self.ids = ids
@@ -77,6 +86,9 @@ public struct Snapshot: Sendable, Equatable {
         self.posterURL = posterURL
         self.backdropURL = backdropURL
         self.isAnime = isAnime
+        self.contentRating = contentRating
+        self.trailerYouTubeID = trailerYouTubeID
+        self.cast = cast
         self.searchNames = searchNames
     }
 }

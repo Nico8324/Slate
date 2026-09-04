@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -220,6 +220,32 @@ A grid of full-size posters is several megabytes an item, which on a television
 is the difference between a list that scrolls and one that does not. Providers
 serving a single size return it unchanged.
 
+## 🎬 What a library record needs
+
+```swift
+result.contentRating.best      // "TV-MA" — in the region you asked for
+result.trailerYouTubeID.best   // a key, not a URL: a player wants the id
+result.cast.best               // billing order, with characters and profiles
+```
+
+Age ratings are **not translations of each other**. `TV-MA` has no French
+equivalent — France says `16` — so `TMDBProvider(accessToken:language:region:)`
+asks for one country and returns nothing rather than a rating from a system the
+viewer does not use.
+
+All of it arrives in the same request as the rest of the record, via
+`append_to_response`.
+
+## 🔎 Letting a person choose
+
+```swift
+await slate.candidates(for: "Dragon Ball")   // Dragon Ball Z (1989), Dragon Ball (1986)
+```
+
+`metadata(for:)` picks one and hides the rest, which is right when the title is
+unambiguous and useless when it is not — "Dragon Ball" resolved to Dragon Ball Z
+for as long as nobody could see the alternatives.
+
 ## 📚 A whole library
 
 ```swift
@@ -279,7 +305,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.3.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.4.0")
 ```
 
 ```swift

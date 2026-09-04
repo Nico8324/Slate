@@ -41,6 +41,7 @@ public struct Identifiers: Sendable, Hashable, Codable {
 public enum FieldKey: String, Sendable, Hashable, Codable, CaseIterable {
     case kind, title, originalTitle, overview, releaseDate, runtimeMinutes
     case episodeCount, genres, rating, posterURL, backdropURL, isAnime
+    case contentRating, trailerYouTubeID, cast
 }
 
 /// The aggregated answer for one title: every field carries every provider's
@@ -60,6 +61,11 @@ public struct TitleMetadata: Sendable, Equatable {
     public var posterURL: Field<URL>
     public var backdropURL: Field<URL>
     public var isAnime: Field<Bool>
+    /// An age rating in the asked-for region: `TV-MA`, `16`, `PG-13`.
+    public var contentRating: Field<String>
+    /// A YouTube key, not a URL — a player wants the id.
+    public var trailerYouTubeID: Field<String>
+    public var cast: Field<[CastMember]>
 
     /// Every name this title is known by, highest-priority provider first and
     /// deduplicated — romaji ahead of English for anime, because that is what a
@@ -84,6 +90,9 @@ public struct TitleMetadata: Sendable, Equatable {
         posterURL: Field<URL> = .init(),
         backdropURL: Field<URL> = .init(),
         isAnime: Field<Bool> = .init(),
+        contentRating: Field<String> = .init(),
+        trailerYouTubeID: Field<String> = .init(),
+        cast: Field<[CastMember]> = .init(),
         searchNames: [String] = [],
         failures: [Provider: String] = [:]
     ) {
@@ -100,6 +109,9 @@ public struct TitleMetadata: Sendable, Equatable {
         self.posterURL = posterURL
         self.backdropURL = backdropURL
         self.isAnime = isAnime
+        self.contentRating = contentRating
+        self.trailerYouTubeID = trailerYouTubeID
+        self.cast = cast
         self.searchNames = searchNames
         self.failures = failures
     }
@@ -149,6 +161,9 @@ extension TitleMetadata {
         case .posterURL: posterURL.candidates.map(\.provider)
         case .backdropURL: backdropURL.candidates.map(\.provider)
         case .isAnime: isAnime.candidates.map(\.provider)
+        case .contentRating: contentRating.candidates.map(\.provider)
+        case .trailerYouTubeID: trailerYouTubeID.candidates.map(\.provider)
+        case .cast: cast.candidates.map(\.provider)
         }
     }
 

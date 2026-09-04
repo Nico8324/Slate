@@ -98,6 +98,21 @@ group names a file. The id is not always a bridge, and for Japanese titles that
 mapping often does not exist at all — which is the whole reason ``AniListProvider``
 is in the first cut.
 
+### What a library record needs
+
+```swift
+result.contentRating.best      // "TV-MA", in the region asked for
+result.trailerYouTubeID.best   // a key, not a URL
+result.cast.best               // billing order, characters, profile images
+```
+
+Age ratings are not translations of each other: `TV-MA` has no French
+equivalent, France says `16`. ``TMDBProvider`` asks for one region and returns
+nothing rather than a rating from a system the viewer does not use.
+
+``MetadataAggregator/candidates(for:kind:)`` returns what a search might have
+meant, for when a person should choose rather than be handed an answer.
+
 ### A whole library at once
 
 ```swift
@@ -180,9 +195,13 @@ A provider that fails is not an error either. It lands in
 - ``TMDBProvider``
 - ``AniListProvider``
 
-### Scanning
+### Scanning and choosing
 
 - ``MetadataAggregator/metadata(for:maxConcurrent:)``
+- ``MetadataAggregator/candidates(for:kind:)``
+- ``Candidate``
+- ``CandidateProvider``
+- ``CastMember``
 
 ### Errors
 

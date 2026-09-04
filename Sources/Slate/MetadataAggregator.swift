@@ -78,6 +78,20 @@ public struct MetadataAggregator: Sendable {
         return nil
     }
 
+    /// What a search might have meant, in ``priority`` order.
+    ///
+    /// For when a person should choose rather than be given an answer. Providers
+    /// that fail are skipped: a partial list beats a failed search.
+    public func candidates(for query: String, kind: Kind? = nil) async -> [Candidate] {
+        let capable = providers.compactMap { $0 as? any CandidateProvider }
+            .sorted { rank($0.provider) < rank($1.provider) }
+        var results: [Candidate] = []
+        for provider in capable {
+            results += (try? await provider.candidates(for: query, kind: kind)) ?? []
+        }
+        return results
+    }
+
     /// A whole library, paced.
     ///
     /// Results come back in the order asked. Concurrency is bounded because a
@@ -164,6 +178,9 @@ public struct MetadataAggregator: Sendable {
         result.posterURL = field(.posterURL, snapshots) { $0.posterURL }
         result.backdropURL = field(.backdropURL, snapshots) { $0.backdropURL }
         result.isAnime = field(.isAnime, snapshots) { $0.isAnime }
+        result.contentRating = field(.contentRating, snapshots) { $0.contentRating }
+        result.trailerYouTubeID = field(.trailerYouTubeID, snapshots) { $0.trailerYouTubeID }
+        result.cast = field(.cast, snapshots) { $0.cast }
 
         result.searchNames = sorted(snapshots, by: priority).flatMap(\.1.searchNames).deduplicatedNames
         return result

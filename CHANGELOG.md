@@ -4,6 +4,41 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-09-04
+
+The fields a library actually writes to a record, which Slate could not supply.
+Reading Cinema's `apply()` — the one known consumer — it sets `name`, `synopsis`,
+`yearOfRelease`, `contentRating`, `genres`, `isAnime`, `trailerYouTubeID` and
+artwork. Slate covered five of those.
+
+### Added
+
+- **`contentRating`.** Age ratings are **not translations of each other**:
+  `TV-MA` has no French equivalent, France says `16`. So
+  `TMDBProvider(accessToken:language:region:)` asks for one country and returns
+  *nothing* rather than a rating from a system the viewer does not use. Films
+  read it from release dates, television from content ratings, and blank
+  certifications — TMDB has plenty — are skipped rather than returned as an
+  empty rating.
+- **`trailerYouTubeID`.** A key, not a URL, because a player wants the id. An
+  official trailer wins over an unofficial one, which wins over a teaser, which
+  beats a blank space where a preview should be.
+- **`cast`.** In billing order, with characters and profile images. Television
+  uses aggregate credits, where a role spans a run; films use plain credits.
+- **`candidates(for:kind:)`.** What a search might have meant, so a person can
+  choose instead of being handed an answer. "Dragon Ball" resolved to Dragon
+  Ball Z for as long as nobody could see the alternatives — a picker is the
+  cheapest possible fix for that class of bug. People are filtered out of
+  `/search/multi` results, since they are not titles.
+
+All three fields arrive in the same request as the rest of the record, through
+`append_to_response`. One request, not five.
+
+### Testing
+
+The two suites that share the stub table are nested now: as siblings they ran in
+parallel and raced each other's routes, which failed as four unrelated 404s.
+
 ## [0.3.0] — 2026-09-04
 
 The things that stop it working on a whole library rather than on the fourteen
@@ -344,6 +379,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.4.0]: https://github.com/Nico8324/Slate/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Nico8324/Slate/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Nico8324/Slate/releases/tag/v0.2.0
 [0.1.2]: https://github.com/Nico8324/Slate/releases/tag/v0.1.2
