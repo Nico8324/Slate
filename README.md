@@ -1,120 +1,181 @@
-# Slate
+<div align="center">
 
-Metadata aggregation for a media library: given a title, answer *what is this*.
+# 🎞️ Slate
 
-Slate is one third of a trio — **Slate** (what is this) / **CinemaResolvers**
-(where do I get it) / **Cinema** (where you watch it). The name is the
-clapperboard: the one object whose whole job is to state what a piece of footage
-is before anyone can tell by looking. A studio's *slate* is also its roster of
-titles.
+**What is this?**
+A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-## The one rule: Slate does not merge
+[![Version](https://img.shields.io/badge/version-0.0.1-blue)](CHANGELOG.md)
+[![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
+[![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-success)](#-installation)
+[![Concurrency](https://img.shields.io/badge/Swift%206-strict%20concurrency-orange)](#-design-notes)
+[![Keys](https://img.shields.io/badge/credentials-none%20stored-critical)](#-credentials)
 
-Every field of ``TitleMetadata`` is a ``Field`` holding **every** provider's
-answer, ordered by priority — not a merged value:
+</div>
+
+---
+
+```mermaid
+flowchart LR
+    A["Lookup<br/>(name · IMDb id · TMDB id)"] --> B[MetadataAggregator]
+    B --> C[AniListProvider]
+    B --> D[TMDBProvider]
+    C --> E["TitleMetadata<br/>every field attributed"]
+    D --> E
+    E --> F["ResolveInput<br/>(imdbID · kind · searchNames)"]
+    E --> G["Your library<br/>decides human vs machine"]
+    F --> H["CinemaResolvers"]
+```
+
+## 🎬 The trio
+
+Slate is one third of a set. The name is the clapperboard — the one object whose
+whole job is to state what a piece of footage *is* before anyone can tell by
+looking. A studio's *slate* is also its roster of titles.
+
+| Package | Question it answers |
+| :--- | :--- |
+| **Slate** | *What is this?* |
+| **CinemaResolvers** | *Where do I get it?* |
+| **Cinema** | *Where do I watch it?* |
+
+## ⚡ Quick start
 
 ```swift
 let slate = MetadataAggregator(providers: [
-    AniListProvider(),
-    TMDBProvider(accessToken: token),
+    AniListProvider(),                     // no credential
+    TMDBProvider(accessToken: token),      // injected, never stored
 ])
 
 let result = await slate.metadata(for: Lookup(search: "Attack on Titan"))
 
-result.overview.best                  // highest-priority answer
-result.overview.bestProvider          // .aniList
-result.overview.value(from: .tmdb)    // what TMDB said, still there
-result.searchNames                    // ["Shingeki no Kyojin", "Attack on Titan", …]
+result.title.best                  // "Shingeki no Kyojin"
+result.title.bestProvider          // .aniList
+result.overview.value(from: .tmdb) // TMDB's summary — still there
+result.searchNames                 // romaji first, for the tracker
+result.resolveInput                // hand straight to a resolver
 ```
 
-This exists because of a specific bug. A library that stores merged values and
-one "user edited this record" flag will, on a refresh from provider #4, silently
-overwrite a hand-correction to a field that provider #1 supplied — and it reads
-as a sync bug for weeks. Provenance has to be per field, and it is far cheaper
-to design in than to retrofit. Slate holds no policy about which answer wins;
-the app decides, because the app is where the edits live.
+## 🧭 The one rule: values carry their source
 
-## Which decisions live where
+Every field of `TitleMetadata` is a `Field`, not a bare `String`:
 
-Slate settles **provider vs provider**: that AniList outranks TMDB for anime is a
-fact about AniList and TMDB, so a consumer should never have to know it. That
-verdict is `field.best`, and `field.bestProvider` says who won.
+| You ask | You get |
+| :--- | :--- |
+| `field.best` | The winning value |
+| `field.bestProvider` | Who won it |
+| `field.value(from:)` | What one specific provider said |
+| `field.dissent` | What the losers said — reachable, never the default |
+| `result.provenance` | `[FieldKey: Provider]` — the whole record at once |
 
-Slate does not settle **human vs machine**: whether a hand-edit outranks a
-refresh is a fact about the consuming app's schema and its user. `FieldKey` makes
-that policy writable as a loop rather than a branch per field:
+This exists because of a specific bug. A library that stores merged values behind
+a single *this record was edited* flag will, on a refresh from provider #4,
+silently overwrite a correction to a field that provider #1 supplied — and it
+reads as a sync bug for weeks. Provenance has to be **per field**, and it is far
+cheaper to design in than to retrofit.
+
+## ⚖️ Which decisions live where
+
+> **Slate settles provider vs provider.**
+> That AniList outranks TMDB for anime is a fact about AniList and TMDB, so no
+> consumer should have to know it. That verdict is `field.best`.
+
+> **Slate does not settle human vs machine.**
+> Whether a hand-edit outranks a refresh is a fact about *your* schema and *your*
+> user. `FieldKey` makes that policy a loop instead of a branch per field:
 
 ```swift
 for (field, provider) in result.provenance {
     // "Did a human touch this field, and if not, is `provider` one I accept?"
-    // — and note some fields are machine-owned even on a hand-edited record.
+    // Some fields stay machine-owned even on a hand-edited record — artwork,
+    // ids, trailers — and that set is yours to declare, not Slate's.
 }
 ```
 
-The losers stay reachable via `field.dissent`, but nothing has to look at them.
+Thirteen hand-written branches drift apart. A loop does not.
 
-A failing provider is not an error. It lands in `result.failures` and the others
-still answer.
-
-## Handing off to an acquisition layer
-
-`result.resolveInput` is `(imdbID, kind, searchNames)` — the shape
-`Resolvers.ResolveRequest` wants, without Slate depending on CinemaResolvers.
-It is `nil` unless some provider supplied both an IMDb id and a kind, since a
-resolver cannot work without them.
-
-`searchNames` is romaji-first on purpose: it is what a release group names a
-file. This is the whole reason AniList is here — the id is not always a bridge,
-and for Japanese titles that mapping often does not exist at all.
-
-## Credentials
-
-Slate holds none. A provider is constructed with a key it does not source and
-rotates it via `updateAPIKey(_:)`; keys are sent as `Authorization: Bearer` and
-never in a query string. This is a public repository — nothing in it is a key,
-and nothing in it should become one.
-
-`AniListProvider` needs no credential at all.
-
-## Providers
+## 🔌 Providers
 
 | Provider | Credential | Gives |
-| --- | --- | --- |
-| TMDB | v4 read token | The IMDb id, western movies and TV, art, ratings |
-| AniList | none | Anime detection, romaji/native names, episode counts |
+| :--- | :--- | :--- |
+| **TMDB** | v4 read token | The IMDb id · western movies & TV · art · ratings |
+| **AniList** | **none** | Anime detection · romaji & native names · episode counts |
 
-TMDB deliberately reports `isAnime` as *nothing rather than a guess*: it has no
-anime type, and its `anime` keyword is volunteer-applied. AniList answering at
-all is the signal.
+**Two deliberate silences.** TMDB reports `isAnime` as `nil`, never `false` — it
+has no anime type and its `anime` keyword is volunteer-applied, so AniList
+answering *at all* is the signal; a guess dressed as a value is worse than an
+absence. And AniList synonyms are filtered to mostly-Latin names: romaji, English
+and native Japanese are always kept because trackers do file under the Japanese
+title, but AniList carries the Thai, Hebrew and Arabic name of everything, and a
+resolver that matches by substring gets nothing from those but false hits.
 
-### Deliberately not here
+A provider that fails is **not** an error. It lands in `result.failures` and the
+others still answer.
 
-- **AniDB** — its distinctive value is fansub-accurate episode numbering, which
-  the consuming app already solves. It is rate-limited and licence-encumbered,
-  and an embedded client id in a public repo is a ban waiting to happen. The bar
-  for adding it: a *named* title the existing machinery gets wrong.
-- **manami** — maps AniList ↔ MAL ↔ AniDB ↔ Kitsu ↔ anime-planet ↔ livechart, and
-  bridges to neither IMDb nor TMDB. Tens of megabytes for ids nothing reads.
-- **Fribb / anime-lists** — a different dataset, and it *does* carry the bridge:
-  `imdb_id`, `themoviedb_id`, `tvdb_id` alongside `anilist_id`, plus the
-  `episode_offset` that absolute-to-season mapping otherwise hand-rolls. So an
-  id bridge from TMDB to AniList is possible; it is simply not needed yet, and
-  the bar is the same as AniDB's — a *named* title the name-search path gets
-  wrong. Two things to know before reopening it: 7.5 MB for the full list, and
-  the mapping is many-to-one in the direction we would query it. The first three
-  records already show it: two different AniDB entries (`3x3 Eyes` and its
-  sequel) share one `imdb_id` and one `themoviedb_id`. An IMDb id resolves to a
-  *set* of AniList entries, so the bridge would still need the disambiguation
-  that searching by name does today.
-- **Watchmode** — answers "where can I stream this", the question this trio
-  exists so nobody has to ask.
-- **Trakt scrobbling** — a different app's premise; its ratings duplicate
-  MDBList's.
-- **TheTVDB, Fanart.tv, MDBList, OMDb** — each is one more key and one more
-  setup step. Add one when a field is missing that a user notices, not before.
+## 🎯 Handing off
 
-## Requirements
+`result.resolveInput` is `(imdbID, kind, searchNames)` — the shape a resolver
+wants, without Slate depending on one. It is `nil` unless some provider supplied
+both an IMDb id and a kind, because a resolver cannot ask without them.
 
-Swift 6, strict concurrency complete, macOS/iOS/tvOS/visionOS 26. `Sendable`
-value types throughout; no SwiftData, no UI, no `@MainActor` in the API surface.
-Mapping these DTOs onto persistent models is the app's job and stays there.
+`searchNames` is **romaji first** on purpose: it is what a release group names a
+file. The id is not always a bridge, and for Japanese titles that mapping often
+does not exist at all — which is the whole reason AniList is in the first cut.
+
+## 🔑 Credentials
+
+Slate holds none, and this is a public repository — nothing in it is a key, and
+nothing in it should become one.
+
+```swift
+let tmdb = TMDBProvider(accessToken: keychain.tmdbToken)  // sourced by you
+await tmdb.updateAPIKey(rotatedToken)                     // rotated in place
+```
+
+Keys travel as `Authorization: Bearer`, **never** in a query string.
+
+## 🚫 Deliberately not here
+
+Each was considered on evidence and rejected. The reasoning is recorded so it
+does not get re-argued — the full version lives in [CHANGELOG.md](CHANGELOG.md).
+
+| Not shipped | Why |
+| :--- | :--- |
+| **AniDB** | Its value is fansub-accurate episode numbering, already solved app-side. Rate-limited, licence-encumbered; an embedded client id in a public repo is a ban waiting to happen. |
+| **manami** | Bridges to neither IMDb nor TMDB. Tens of megabytes for ids nothing reads. |
+| **Fribb / anime-lists** | *Does* carry the bridge, plus `episode_offset`. But 7.5 MB, and the mapping is many-to-one in the direction we would query — an IMDb id resolves to a **set**, so it still needs the disambiguation that name search does today. |
+| **Watchmode** | Answers "where can I stream this" — the question this trio exists so nobody has to ask. |
+| **Trakt scrobbling** | A different app's premise; its ratings duplicate MDBList's. |
+| **TheTVDB · Fanart.tv · MDBList · OMDb** | Each is one more key and one more setup step. Add one when a field is missing that a user *notices*. |
+| **Per-field priority** | Genuinely per-field domain knowledge — but with two providers the table is empty. When a third lands, `priority` becomes `[FieldKey: [Provider]]` and no caller changes. |
+
+The bar for reopening any of these is the same: **name a title the current path
+gets wrong.**
+
+## 📦 Installation
+
+```swift
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.0.1")
+```
+
+```swift
+.product(name: "Slate", package: "Slate")
+```
+
+## 💻 Platform support
+
+| macOS | iOS | tvOS | visionOS |
+| :---: | :---: | :---: | :---: |
+| 26 | 26 | 26 | 26 |
+
+## 🛠 Design notes
+
+- **Swift 6 language mode, strict concurrency complete.** `Sendable` value types
+  throughout; `TMDBProvider` is an `actor` because it holds a rotatable key.
+- **No SwiftData, no UI, no `@MainActor` in the API surface.** Mapping these DTOs
+  onto persistent models is the app's job and stays there.
+- **No dependencies.** `Foundation` and `URLSession`, nothing else.
+- **A provider may not rank itself, merge, or guess.** It answers with a
+  `Snapshot` of flat optionals; the aggregator does the rest.
