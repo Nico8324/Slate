@@ -69,13 +69,13 @@ public actor TMDBProvider: MetadataProvider {
         case .movie:
             let url = try URL.build(Self.api, path: "/search/movie",
                                     query: ["query": query, "year": year.map(String.init)])
-            let hit = try await http.json(SearchResponse.self, url: url, headers: headers).results.first
-            return hit.map { ($0.id, .movie) }
+            let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
+            return Self.best(of: results, matching: query).map { ($0.id, .movie) }
         case .series:
             let url = try URL.build(Self.api, path: "/search/tv",
                                     query: ["query": query, "first_air_date_year": year.map(String.init)])
-            let hit = try await http.json(SearchResponse.self, url: url, headers: headers).results.first
-            return hit.map { ($0.id, .series) }
+            let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
+            return Self.best(of: results, matching: query).map { ($0.id, .series) }
         case nil:
             let url = try URL.build(Self.api, path: "/search/multi", query: ["query": query])
             let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
@@ -112,6 +112,27 @@ public actor TMDBProvider: MetadataProvider {
         )
     }
 
+    /// Which of several results is the one that was asked for.
+    ///
+    /// TMDB's own ordering is kept wherever it is the only signal — but it puts
+    /// the 1999 Hunter × Hunter ahead of the 2011 one, and a library matched to
+    /// the wrong adaptation is wrong about everything downstream: 62 episodes
+    /// instead of 148, one season instead of three, and every absolute number
+    /// mapped against the wrong run.
+    ///
+    /// So among results whose title *is* the query — remakes, and only remakes —
+    /// the most popular wins. Where nothing matches the title exactly this
+    /// changes nothing and TMDB's relevance stands, because then popularity would
+    /// be answering a question it was not asked.
+    static func best(of results: [SearchHit], matching query: String) -> SearchHit? {
+        let asked = query.normalizedForMatching
+        let sameTitle = results.filter {
+            ($0.name ?? $0.title ?? "").normalizedForMatching == asked
+        }
+        guard !sameTitle.isEmpty else { return results.first }
+        return sameTitle.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }
+    }
+
     // MARK: - Payloads
 
     private struct FindResponse: Decodable {
@@ -119,13 +140,16 @@ public actor TMDBProvider: MetadataProvider {
         var tv_results: [SearchHit] = []
     }
 
-    private struct SearchResponse: Decodable {
+    struct SearchResponse: Decodable {
         var results: [SearchHit] = []
     }
 
-    private struct SearchHit: Decodable {
+    struct SearchHit: Decodable {
         let id: Int
         var media_type: String?
+        var name: String?
+        var title: String?
+        var popularity: Double?
     }
 
     private struct Details: Decodable {

@@ -181,6 +181,22 @@ struct ProviderTests {
         #expect(bleach.looksLikeTheSameTitleAs("Bleach".normalizedForMatching))
     }
 
+    @Test func aDisambiguatingYearIsNotPartOfTheName() {
+        // AniList files the second adaptation as "Hunter x Hunter (2011)", so
+        // without this nothing a person types matches it and 1999 wins by
+        // default — 62 episodes and one season instead of 148 and three.
+        #expect("Hunter x Hunter (2011)".normalizedForMatching
+                == "Hunter x Hunter".normalizedForMatching)
+        // ...but a year that is the title stays.
+        #expect("Blade Runner 2049".normalizedForMatching
+                != "Blade Runner".normalizedForMatching)
+    }
+
+    @Test func theJapaneseMultiplicationSignIsTheLetterEveryoneTypes() {
+        #expect("HUNTER×HUNTER".normalizedForMatching == "Hunter x Hunter".normalizedForMatching)
+        #expect("SPY×FAMILY".normalizedForMatching == "Spy x Family".normalizedForMatching)
+    }
+
     @Test func fuzzyTitleMatchingIgnoresPunctuationAndCase() {
         #expect("Fullmetal Alchemist: Brotherhood".normalizedForMatching
                 == "fullmetal alchemist brotherhood".normalizedForMatching)

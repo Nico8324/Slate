@@ -25,15 +25,34 @@ public struct AniListProvider: MetadataProvider, Sendable {
             variables: .init(id: lookup.ids.aniList, search: lookup.query)
         ))
 
-        let media: Media?
+        let candidates: [Media]
         do {
-            media = try await http.json(Response.self, url: Self.endpoint, method: "POST",
-                                        headers: ["Accept": "application/json"], body: body).data?.Media
+            candidates = try await http.json(Response.self, url: Self.endpoint, method: "POST",
+                                             headers: ["Accept": "application/json"],
+                                             body: body).data?.Page?.media ?? []
         } catch SlateError.http(let status, _) where status == 404 {
             return nil // AniList reports "no such anime" as a 404. Not a failure.
         }
-        guard let media, matches(media, lookup: lookup) else { return nil }
+        guard let media = pick(from: candidates, lookup: lookup) else { return nil }
         return snapshot(from: media)
+    }
+
+    /// Which of several entries was asked for.
+    ///
+    /// AniList's relevance puts the 1999 Hunter × Hunter ahead of the 2011 one,
+    /// as TMDB's does. When more than one entry carries the asked-for title
+    /// exactly — which is what a remake looks like — the popular one is the one
+    /// meant. Otherwise relevance stands, filtered by ``matches(_:lookup:)``.
+    private func pick(from candidates: [Media], lookup: Lookup) -> Media? {
+        let eligible = candidates.filter { matches($0, lookup: lookup) }
+        guard let asked = lookup.query?.normalizedForMatching, !asked.isEmpty else {
+            return eligible.first
+        }
+        let sameTitle = eligible.filter {
+            $0.allNames.contains { $0.normalizedForMatching == asked }
+        }
+        guard !sameTitle.isEmpty else { return eligible.first }
+        return sameTitle.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }
     }
 
     /// AniList search is fuzzy and will answer for western titles it should not.
@@ -70,11 +89,14 @@ public struct AniListProvider: MetadataProvider, Sendable {
 
     private static let query = """
     query ($id: Int, $search: String) {
-      Media(id: $id, search: $search, type: ANIME) {
-        id idMal format episodes duration genres averageScore bannerImage synonyms description
-        title { romaji english native }
-        startDate { year month day }
-        coverImage { extraLarge }
+      Page(perPage: 5) {
+        media(id: $id, search: $search, type: ANIME) {
+          id idMal format episodes duration genres averageScore bannerImage synonyms description
+          popularity
+          title { romaji english native }
+          startDate { year month day }
+          coverImage { extraLarge }
+        }
       }
     }
     """
@@ -90,7 +112,10 @@ public struct AniListProvider: MetadataProvider, Sendable {
 
     private struct Response: Decodable {
         var data: Payload?
-        struct Payload: Decodable { var Media: AniListProvider.Media? }
+        struct Payload: Decodable {
+            var Page: PageResult?
+            struct PageResult: Decodable { var media: [AniListProvider.Media]? }
+        }
     }
 
     fileprivate struct Media: Decodable {
@@ -101,6 +126,7 @@ public struct AniListProvider: MetadataProvider, Sendable {
         var duration: Int?
         var genres: [String]?
         var averageScore: Int?
+        var popularity: Int?
         var bannerImage: String?
         var synonyms: [String]?
         var description: String?
@@ -163,7 +189,23 @@ extension String {
     }
 
     var normalizedForMatching: String {
-        lowercased().filter { $0.isLetter || $0.isNumber }
+        // A parenthesised year disambiguates two adaptations; it is not part of
+        // the name. AniList files the second Hunter × Hunter as "Hunter x Hunter
+        // (2011)", so without this nothing a person types ever matches it
+        // exactly, and the 1999 series wins by default. Only parenthesised — a
+        // bare trailing year can be the title itself, as in Blade Runner 2049.
+        let withoutYear = replacingOccurrences(
+            of: #"\(\s*(19|20)\d{2}\s*\)"#, with: "", options: .regularExpression
+        )
+        // × is how Japanese titles write the x that everyone types: HUNTER×HUNTER
+        // and SPY×FAMILY are searched for as "Hunter x Hunter" and "Spy x Family".
+        // It is punctuation to `isLetter`, so without this it vanishes and the two
+        // spellings stop matching.
+        return withoutYear
+            .replacingOccurrences(of: "×", with: "x")
+            .replacingOccurrences(of: "✕", with: "x")
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     /// Whether two normalised titles are plausibly the same show.
