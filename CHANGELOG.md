@@ -4,6 +4,28 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] — 2026-09-04
+
+Documentation only; behaviour unchanged. Tagged for the same reason 0.4.2 was —
+where a warning lives decides whether anyone reads it.
+
+### Changed
+
+- **The `nativeSeason:` coupling is now stated on the concrete implementations**,
+  not only on `MetadataAggregator.artwork` and the `ArtworkProvider` protocol. A
+  caller holding a `TMDBProvider` directly — which is how the one known consumer
+  uses this package — got no parameter documentation at all, because Quick Help
+  shows the concrete method's doc rather than the protocol's. The warning existed
+  in the two places that caller would not look.
+
+  Passing a corrected season number returns a real picture of the wrong season
+  with nothing in the result to say so: Bleach's arc season 2 lives inside TMDB's
+  season 1, so asking for 2 returns Thousand-Year Blood War's posters.
+
+- **`AniListProvider.artwork` documents that a non-nil season returns `nil`.**
+  AniList files each cour as its own entry and holds no season-level art, so
+  refusing is right — but silence about refusing is not.
+
 ## [0.4.2] — 2026-09-04
 
 Documentation only; behaviour is unchanged. Tagged rather than left on `main`
@@ -432,6 +454,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.4.3]: https://github.com/Nico8324/Slate/releases/tag/v0.4.3
 [0.4.2]: https://github.com/Nico8324/Slate/releases/tag/v0.4.2
 [0.4.1]: https://github.com/Nico8324/Slate/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Nico8324/Slate/releases/tag/v0.4.0

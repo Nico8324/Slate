@@ -9,6 +9,13 @@ extension TMDBProvider: ArtworkProvider {
     /// be reasoned about — and asking for one language means a second request
     /// when it turns out to have none, which for a picker is the wrong shape
     /// entirely.
+    ///
+    /// - Parameter nativeSeason: **TMDB's own** season number, not one from a
+    ///   corrected ``SeasonStructure``. Translate first with
+    ///   ``SeasonStructure/nativeSeason(ofSeason:)``. Bleach's arc season 2 lives
+    ///   inside TMDB's season 1, so passing 2 straight through returns
+    ///   Thousand-Year Blood War's posters — a real picture of the wrong season,
+    ///   with nothing in the result to say so.
     public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
 
@@ -74,6 +81,10 @@ extension AniListProvider: ArtworkProvider {
     /// AniList holds one cover and one banner per entry, and no language or
     /// rating for either. They are worth having because AniList's cover is the
     /// one anime viewers recognise, but there is nothing here to choose between.
+    ///
+    /// - Parameter nativeSeason: AniList files each cour as its own entry and
+    ///   holds no season-level art, so anything but `nil` returns `nil` rather
+    ///   than a title-level image standing in for a season's.
     public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
         guard nativeSeason == nil, let id = ids.aniList else { return nil }
         guard let snapshot = try await snapshot(for: Lookup(ids: Identifiers(aniList: id))) else {
