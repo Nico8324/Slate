@@ -109,6 +109,9 @@ extension TMDBProvider: SeasonProvider {
 
     /// Which ordering to trust, of the several a show may carry.
     ///
+    /// Three tiers, narrowing from "the one everybody agrees on" to "the show's
+    /// own divisions", and never reaching an alternate cut of the run.
+    ///
     /// `TVDB Order` by name first, because that is the one that agrees with
     /// Wikipedia and with TheTVDB, which between them are what a release group's
     /// "Season 2" means — and it arrives through TMDB, so it costs no second
@@ -126,10 +129,39 @@ extension TMDBProvider: SeasonProvider {
         among groups: [EpisodeGroupSummary], coveringAtLeast episodeCount: Int
     ) -> EpisodeGroupSummary? {
         let eligible = groups.filter { $0.group_count > 1 && $0.episode_count >= episodeCount }
+
         if let tvdb = eligible.first(where: { $0.name.caseInsensitiveCompare("TVDB Order") == .orderedSame }) {
             return tvdb
         }
-        return eligible.first { $0.type == EpisodeGroupSummary.originalAirDate }
+        if let airDate = eligible.first(where: { $0.type == EpisodeGroupSummary.originalAirDate }) {
+            return airDate
+        }
+
+        // Last, the show's own divisions. Jujutsu Kaisen and Hunter x Hunter
+        // have neither of the above and were left as one long season each —
+        // which is the thing this whole type exists to prevent. What they do
+        // have is a `production` or `tv` ordering, which means "how this show is
+        // actually divided" rather than an alternate cut of it.
+        //
+        // Deliberately not: `absolute` (that *is* the flat run being corrected),
+        // `dvd` and `digital` (a release's cut, not the show's), and `storyArc`
+        // (the same idea done to different standards — Bleach carries three that
+        // split one run 21, 12 and 25 ways).
+        let divisions = eligible.filter {
+            $0.type == EpisodeGroupSummary.production || $0.type == EpisodeGroupSummary.tv
+        }
+        // Shows carry several of these and they disagree, so the choice must be
+        // deterministic rather than "whichever the API listed first": a Latin
+        // name over 季 for a library that reads Latin, then the fewest groups —
+        // the least aggressive re-cut — then the tightest coverage.
+        let ranked = divisions.sorted { lhs, rhs in
+            let (l, r) = (lhs.name.isMostlyLatin, rhs.name.isMostlyLatin)
+            if l != r { return l }
+            if lhs.group_count != rhs.group_count { return lhs.group_count < rhs.group_count }
+            if lhs.episode_count != rhs.episode_count { return lhs.episode_count < rhs.episode_count }
+            return lhs.name < rhs.name
+        }
+        return ranked.first
     }
 
     /// Reads an ordering into seasons.
@@ -169,6 +201,8 @@ extension TMDBProvider: SeasonProvider {
 
     struct EpisodeGroupSummary: Decodable, Sendable {
         static let originalAirDate = 1
+        static let production = 6
+        static let tv = 7
 
         let id: String
         let name: String

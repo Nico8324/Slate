@@ -91,6 +91,35 @@ struct FlatteningTests {
         #expect(chosen == nil)
     }
 
+    @Test func theShowsOwnDivisionsAreAcceptedWhenNothingBetterExists() {
+        // Jujutsu Kaisen's real groups: no TVDB Order, no air-date ordering, so
+        // it stayed one season of 59. A `production`/`tv` ordering is what it
+        // actually has, and picking it deterministically beats leaving it flat.
+        let chosen = TMDBProvider.preferredGroup(among: [
+            summary("Italian Parts", type: 4, groups: 3, episodes: 59),
+            summary("Story Arcs", type: 5, groups: 7, episodes: 48),
+            summary("Saga Española", type: 5, groups: 4, episodes: 69),
+            summary("Seasons", type: 6, groups: 4, episodes: 64),
+            summary("季", type: 6, groups: 3, episodes: 59),
+            summary("Seasons", type: 6, groups: 4, episodes: 69),
+        ], coveringAtLeast: 59)
+
+        #expect(chosen?.name == "Seasons")
+        #expect(chosen?.episode_count == 64, "tightest coverage of the two named Seasons")
+    }
+
+    @Test func aReleasesOwnCutIsNeverTheShowsSeasons() {
+        // Digital and DVD orderings are how somebody shipped it, not how it
+        // aired; absolute order *is* the flat run being corrected.
+        let chosen = TMDBProvider.preferredGroup(among: [
+            summary("Absolute", type: 2, groups: 4, episodes: 92),
+            summary("Blu-ray Box", type: 3, groups: 6, episodes: 92),
+            summary("Italian Parts", type: 4, groups: 3, episodes: 92),
+        ], coveringAtLeast: 62)
+
+        #expect(chosen == nil)
+    }
+
     @Test func anOrderingThatMissesEpisodesIsRejected() {
         let chosen = TMDBProvider.preferredGroup(among: [
             summary("TVDB Order", type: 1, groups: 16, episodes: 300),
