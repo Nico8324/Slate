@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.2-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -154,10 +154,24 @@ Past the end of a run is left **unmapped, never clamped**. A number beyond the
 last episode means the season list is incomplete or the show was matched wrongly,
 and filing it somewhere plausible hides that instead of showing it.
 
-> Ported from Cinema's `ShowSeasons`, `ArcSeasons` and `AbsoluteEpisodeMap`,
-> whose thresholds were arrived at against real shows. Checked there: Suits, Rick
-> and Morty, Attack on Titan, SPY × FAMILY and Frieren are untouched; Bleach,
-> Detective Conan, One Piece and Naruto Shippūden are all caught.
+### Checked against the live API
+
+| Corrected | Left alone |
+| :--- | :--- |
+| Bleach — 366 flat → 17 arcs | Attack on Titan · Demon Slayer |
+| Detective Conan — 1212 → 31 years | SPY×FAMILY · Frieren · Chainsaw Man |
+| Jujutsu Kaisen — 59 → `24,23,12` | Hunter × Hunter (2011) — its 62/74/12 stands |
+| Dragon Ball — 153 → 6 Toei divisions | Suits · Breaking Bad |
+| One Piece · Naruto Shippūden — `TVDB Order` | |
+
+Getting the *show* right matters as much as the seasons: "Dragon Ball" used to
+resolve to Dragon Ball Z, and "Hunter x Hunter" to the 1999 adaptation rather
+than the 2011 one — 62 episodes instead of 148, and every absolute number mapped
+against the wrong run. Among results carrying the asked-for title exactly, the
+popular one wins.
+
+> Season logic ported from Cinema's `ShowSeasons`, `ArcSeasons` and
+> `AbsoluteEpisodeMap`, whose thresholds were arrived at against real shows.
 
 ## 🎯 Handing off
 
@@ -203,7 +217,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.1.1")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.1.2")
 ```
 
 ```swift

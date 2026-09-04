@@ -4,6 +4,82 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] — 2026-09-04
+
+Everything here came out of running real shows against the live API rather than
+reasoning about them. Six failures, five of them fixed; the sixth turned out not
+to be a failure.
+
+### Fixed
+
+- **A legal drama was filed as anime.** Searching "Suits" matched *Is This a
+  Zombie? Of the Dead: Yes, This Suits Me Just Fine* — bare substring
+  containment lets a five-letter query match a word buried in a forty-four-letter
+  title. Containment still has to be allowed, since "Frieren" is how people ask
+  for *Sousou no Frieren*, so the shorter title must now be a substantial part of
+  the longer one. Frieren is 47% of its full title and passes; Suits is 11% of
+  that zombie title and does not.
+- **"Dragon Ball" was resolving to Dragon Ball Z.** TMDB's relevance answers a
+  franchise query with its most popular member, and 12971 is *Z* — 301 episodes,
+  whose Saiyan saga was the "biggest season" that made the show look correctly
+  divided. Requiring an exact title match lands on 12609, the 1986 series, 153
+  episodes, which is then correctly split into Toei's six official divisions.
+- **"Hunter x Hunter" was resolving to the 1999 adaptation.** 62 episodes and one
+  season instead of 148 and three — and every absolute number mapped against the
+  wrong run. Among results carrying the asked-for title exactly, which is what a
+  remake looks like, the popular one now wins. Where nothing matches the title
+  exactly, provider relevance stands: popularity would then be answering a
+  question nobody asked.
+- **A disambiguating year is no longer part of the name.** AniList files the
+  second adaptation as "Hunter x Hunter (2011)", so nothing a person types ever
+  matched it. Only parenthesised — a bare trailing year can be the title itself,
+  as in *Blade Runner 2049*.
+- **`×` now reads as the `x` everyone types.** It is punctuation to `isLetter`,
+  so it vanished in normalisation and `HUNTER×HUNTER` never matched
+  "Hunter x Hunter". Fixes `SPY×FAMILY` the same way.
+- **Jujutsu Kaisen is three seasons, not one of 59.** It slipped under the
+  60-episode bar by a single episode. A show filed as a *single* long season is a
+  much stronger signal than one long season among many, so that case is read at
+  50 — anime seasons are twelve or thirteen, occasionally twenty-six.
+- **Shows whose real seasons are in a production ordering are corrected.**
+  Jujutsu Kaisen carries no `TVDB Order` and no air-date ordering, so the
+  preference chain ran out and returned nothing. `production` and `tv` orderings
+  are now a third and last tier — they mean *how this show is divided* rather
+  than an alternate cut of it. Still excluded: `absolute` (that is the flat run
+  being corrected), `dvd` and `digital` (a release's cut), and `storyArc`. Shows
+  carry several and they disagree, so the pick is deterministic: a Latin name
+  over the localised duplicate, then fewest groups, then tightest coverage.
+
+### Refused
+
+Two corrections that were not corrections, both caught by running them.
+
+- **Frieren was being split into cours.** Read at two cours, its 38 episodes
+  under one number became 16, 12 and 10 — which is not how anyone numbers it;
+  releases run straight through to 28. Thirty-eight is not unambiguously more
+  than one season, hence the bar at 50.
+- **An ordering must actually break up the long run.** Hunter × Hunter's
+  `Complete Series` passed every eligibility rule and fixed nothing: it returned
+  the 62-episode run untouched as season one and filed the OVAs beside it as
+  seasons two to four, so the flattening survived wearing a correction's label.
+  The largest new season must be smaller than the one it replaced.
+
+### Not a failure
+
+**The 1999 Hunter × Hunter really is one season of 62 episodes.** Refusing to
+correct it was right, and the earlier diagnosis of "TMDB has no usable ordering,
+this is the AniDB-shaped gap" was wrong. The OVAs that ordering wanted to add as
+seasons — 8, 8 and 14 — are separate works, and AniList lists them as exactly
+that.
+
+### Verified against the live API
+
+Corrected: Bleach (366 flat → 17 arcs), Detective Conan (1212 → 31 years),
+Jujutsu Kaisen (59 → 24/23/12), Dragon Ball (153 → 6 divisions), One Piece and
+Naruto Shippūden via `TVDB Order`. Left alone, correctly: Attack on Titan, Demon
+Slayer, SPY×FAMILY, Frieren, Chainsaw Man, Hunter × Hunter (2011, whose own
+62/74/12 stands), Suits and Breaking Bad.
+
 ## [0.1.1] — 2026-09-04
 
 ### Fixed
@@ -175,6 +251,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.1.2]: https://github.com/Nico8324/Slate/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Nico8324/Slate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Nico8324/Slate/releases/tag/v0.1.0
 [0.0.1]: https://github.com/Nico8324/Slate/releases/tag/v0.0.1
