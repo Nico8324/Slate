@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.0.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -27,6 +27,8 @@ flowchart LR
     E --> F["ResolveInput<br/>(imdbID · kind · searchNames)"]
     E --> G["Your library<br/>decides human vs machine"]
     F --> H["CinemaResolvers"]
+    B -.-> S["SeasonStructure<br/>arcs · absolute ↔ S/E"]
+    S -.-> G
 ```
 
 ## 🎬 The trio
@@ -114,6 +116,49 @@ resolver that matches by substring gets nothing from those but false hits.
 A provider that fails is **not** an error. It lands in `result.failures` and the
 others still answer.
 
+## 📺 Seasons and episodes
+
+TV shows have seasons and episodes, and a provider that says *366 episodes, one
+season* has not answered the question. TMDB files Bleach that way; Detective
+Conan as one season of 1212. Nothing else in the world numbers them like that —
+Wikipedia, TheTVDB and the groups that name the releases all count arcs.
+
+```swift
+let structure = await slate.seasons(for: result.ids)
+
+structure?.ordering                       // .episodeGroup(name: "TVDB Order")
+structure?.numberedSeasons.count          // 16, not 1
+structure?.position(ofAbsolute: 340)      // "Bleach - 340" → S14E7
+structure?.nativeRange(ofSeason: 2)       // (season: 1, episodes: 21...41)
+```
+
+The correction comes from TMDB itself, through `episode_groups` — which means
+**TheTVDB's ordering without a TheTVDB key.**
+
+It intervenes narrowly, and that is the whole safety argument. Only when TMDB is
+clearly flattening (any season of 60+), only towards an ordering that accounts
+for *every* episode the show is said to have, and only by name — `TVDB Order`
+first, then an original-air-date ordering. Story-arc orderings are never a
+fallback: Bleach carries three that split the same 366 episodes 21, 12 and 25
+ways, and picking one arbitrarily silently renumbers somebody's library.
+
+| Question | Answer |
+| :--- | :--- |
+| `position(ofAbsolute:)` | `Bleach - 340` → the season and episode it is shown under |
+| `absolute(ofSeason:episode:)` | back the other way |
+| `nativeRange(ofSeason:)` | the provider's own numbers for an arc — what an indexer can be asked |
+| `position(ofNativeSeason:episode:)` | filing a file that was matched against TMDB |
+| `absoluteNumbering` | `.stated` when the provider states the correspondence, `.derived` when it was walked |
+
+Past the end of a run is left **unmapped, never clamped**. A number beyond the
+last episode means the season list is incomplete or the show was matched wrongly,
+and filing it somewhere plausible hides that instead of showing it.
+
+> Ported from Cinema's `ShowSeasons`, `ArcSeasons` and `AbsoluteEpisodeMap`,
+> whose thresholds were arrived at against real shows. Checked there: Suits, Rick
+> and Morty, Attack on Titan, SPY × FAMILY and Frieren are untouched; Bleach,
+> Detective Conan, One Piece and Naruto Shippūden are all caught.
+
 ## 🎯 Handing off
 
 `result.resolveInput` is `(imdbID, kind, searchNames)` — the shape a resolver
@@ -143,12 +188,13 @@ does not get re-argued — the full version lives in [CHANGELOG.md](CHANGELOG.md
 
 | Not shipped | Why |
 | :--- | :--- |
-| **AniDB** | Its value is fansub-accurate episode numbering, already solved app-side. Rate-limited, licence-encumbered; an embedded client id in a public repo is a ban waiting to happen. |
+| **AniDB** | Fansub-accurate episode numbering and specials — the one gap `TVDB Order` does not close. Still out because it is rate-limited and licence-encumbered, and an embedded client id in a public repo is a ban waiting to happen. This is the **most likely next provider**, not a permanent no. |
 | **manami** | Bridges to neither IMDb nor TMDB. Tens of megabytes for ids nothing reads. |
 | **Fribb / anime-lists** | *Does* carry the bridge, plus `episode_offset`. But 7.5 MB, and the mapping is many-to-one in the direction we would query — an IMDb id resolves to a **set**, so it still needs the disambiguation that name search does today. |
 | **Watchmode** | Answers "where can I stream this" — the question this trio exists so nobody has to ask. |
 | **Trakt scrobbling** | A different app's premise; its ratings duplicate MDBList's. |
-| **TheTVDB · Fanart.tv · MDBList · OMDb** | Each is one more key and one more setup step. Add one when a field is missing that a user *notices*. |
+| **TheTVDB** | Its episode ordering is the reason to want it — and TMDB's `TVDB Order` episode group already delivers that ordering, on the key we already have. Revisit only for a show where the group is missing or wrong. |
+| **Fanart.tv · MDBList · OMDb** | Each is one more key and one more setup step. Add one when a field is missing that a user *notices*. |
 | **Per-field priority** | Genuinely per-field domain knowledge — but with two providers the table is empty. When a third lands, `priority` becomes `[FieldKey: [Provider]]` and no caller changes. |
 
 The bar for reopening any of these is the same: **name a title the current path
@@ -157,7 +203,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.0.1")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.1.0")
 ```
 
 ```swift

@@ -43,6 +43,21 @@ public struct MetadataAggregator: Sendable {
         return assemble(snapshots, failures: failures)
     }
 
+    /// How a series is divided, from the first season-capable provider that can
+    /// say — in ``priority`` order.
+    ///
+    /// A separate request from ``metadata(for:)`` because it is a separate
+    /// question and several requests more expensive. A caller asking *what is
+    /// this* should not pay for episode lists it did not ask for.
+    public func seasons(for ids: Identifiers) async -> SeasonStructure? {
+        let capable = providers.compactMap { $0 as? any SeasonProvider }
+            .sorted { rank($0.provider) < rank($1.provider) }
+        for provider in capable {
+            if let structure = try? await provider.seasons(for: ids) { return structure }
+        }
+        return nil
+    }
+
     func assemble(_ snapshots: [Provider: Snapshot], failures: [Provider: String] = [:]) -> TitleMetadata {
         let ordered = sorted(snapshots)
         var result = TitleMetadata(failures: failures)
@@ -73,7 +88,7 @@ public struct MetadataAggregator: Sendable {
         }
     }
 
-    private func rank(_ provider: Provider) -> Int {
+    func rank(_ provider: Provider) -> Int {
         priority.firstIndex(of: provider) ?? priority.count
     }
 

@@ -4,6 +4,73 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] — 2026-09-04
+
+Television has seasons and episodes. 0.0.1 answered "366 episodes" for Bleach and
+called that a description of a series; it was not one.
+
+TMDB files Bleach as a single season of 366 episodes and Detective Conan as one
+of 1212. Nothing else in the world numbers them that way — Wikipedia, TheTVDB and
+the groups that name the releases all count arcs — so a library filed TMDB's way
+lines up with nothing a person reads, searches for, or downloads. The correction
+comes from TMDB itself, through `episode_groups`, which is where the community
+keeps the orderings TMDB's own numbering isn't.
+
+That means **TheTVDB's ordering without a TheTVDB key**, which is most of the
+reason the plan wanted TheTVDB in the first place.
+
+### Added
+
+- **`SeasonStructure`.** How a series is divided, with `ordering` saying whether
+  that is the provider's own answer or a correction, and `absoluteNumbering`
+  saying whether the correspondence was *stated* by the provider or walked.
+- **`Season` and `Episode`.** Arc names, episode titles, air dates, and each
+  episode's `native` position so the two numberings stay translatable.
+  `Season.episodes` is optional: `nil` means not loaded, which is not the same as
+  a season with no episodes.
+- **Absolute-number translation.** `position(ofAbsolute:)` turns `Bleach - 340`
+  into the season and episode it is shown under; `absolute(ofSeason:episode:)`
+  goes back. Past the end of a run is left **unmapped, never clamped** — a number
+  beyond the last episode means the season list is incomplete or the show was
+  matched wrongly, and filing it somewhere plausible hides that.
+- **`nativeRange(ofSeason:)`.** The provider's own episode numbers for one arc,
+  when contiguous — Bleach's second arc is TMDB S1 E21–41, and a bounded range is
+  what an acquisition can ask an indexer for instead of matching a
+  complete-series pack. An ordering that jumps around returns `nil` rather than a
+  range quietly covering episodes it does not hold.
+- **`SeasonProvider`** and `MetadataAggregator.seasons(for:)`. A separate request
+  from `metadata(for:)`, because it is a separate question and several requests
+  more expensive.
+- **`TMDBProvider.episodes(ofShow:season:)`** for the ordinary path, where
+  episodes are not already in hand. The episode-group path fills them for free.
+  Orderings are cached for the life of the provider, `nil` results included.
+
+### How narrowly it intervenes
+
+Choosing an ordering is a decision, not a lookup — Bleach carries thirteen and
+they disagree with each other — and getting it wrong silently renumbers a
+library. So the correction applies only when TMDB is *clearly* flattening (any
+season of 60 or more), only towards an ordering that accounts for every episode
+the show is said to have, and only by name: `TVDB Order` first, then an
+original-air-date ordering. Story-arc orderings are never a fallback; Bleach has
+three splitting the same run 21, 12 and 25 ways. Specials keep season 0 rather
+than being renumbered into the run.
+
+Ported from Cinema's `ShowSeasons`, `ArcSeasons` and `AbsoluteEpisodeMap`, whose
+thresholds were arrived at against real shows: Suits, Rick and Morty, Attack on
+Titan, SPY × FAMILY and Frieren are untouched, while Bleach, Detective Conan, One
+Piece and Naruto Shippūden are all caught.
+
+### Changed
+
+- **The case against AniDB and TheTVDB is restated, because the old one expired.**
+  0.0.1 rejected AniDB on the grounds that episode numbering was solved
+  app-side. Slate owns that now, so that argument no longer holds. TheTVDB's
+  ordering arrives free through TMDB's episode groups; AniDB's fansub-accurate
+  numbering and specials are the one gap that does not close, which makes it the
+  most likely next provider rather than a permanent no. The bar is unchanged:
+  name a title the current path gets wrong.
+
 ## [0.0.1] — 2026-09-04
 
 First cut. Two providers, one credential, and one design decision that the rest
@@ -89,4 +156,5 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.1.0]: https://github.com/Nico8324/Slate/releases/tag/v0.1.0
 [0.0.1]: https://github.com/Nico8324/Slate/releases/tag/v0.0.1

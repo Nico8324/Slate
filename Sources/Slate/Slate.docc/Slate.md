@@ -52,6 +52,24 @@ than to retrofit.
 The values that lost stay reachable through ``Field/dissent``, but nothing has to
 look at them.
 
+### Seasons and episodes
+
+A series is not described by an episode count. TMDB files Bleach as one season of
+366 episodes; everybody else counts arcs, and a library filed the flat way lines
+up with nothing a person reads or downloads.
+
+```swift
+let structure = await slate.seasons(for: result.ids)
+structure?.ordering                  // .episodeGroup(name: "TVDB Order")
+structure?.position(ofAbsolute: 340) // "Bleach - 340" → S14E7
+```
+
+``SeasonStructure`` corrects narrowly and says when it has: ``SeasonStructure/ordering``
+distinguishes a correction from the ordinary case, and
+``SeasonStructure/absoluteNumbering`` distinguishes a correspondence the provider
+*stated* from one that was walked. Past the end of a run is left unmapped rather
+than clamped.
+
 ### Handing off to an acquisition layer
 
 ``TitleMetadata/resolveInput`` is `(imdbID, kind, searchNames)` — the shape a
@@ -99,6 +117,14 @@ A provider that fails is not an error either. It lands in
 - ``FieldKey``
 - ``Identifiers``
 - ``Kind``
+
+### Seasons
+
+- ``SeasonStructure``
+- ``Season``
+- ``Episode``
+- ``EpisodePosition``
+- ``SeasonProvider``
 
 ### Handing off
 

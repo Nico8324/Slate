@@ -8,11 +8,18 @@ import Foundation
 public actor TMDBProvider: MetadataProvider {
     public nonisolated let provider = Provider.tmdb
 
-    private static let api = "https://api.themoviedb.org/3"
+    static let api = "https://api.themoviedb.org/3"
     private static let images = "https://image.tmdb.org/t/p/original"
 
-    private var accessToken: String
-    private let http: HTTP
+    private(set) var accessToken: String
+    let http: HTTP
+
+    /// Orderings are large and change rarely, and a show page can be opened
+    /// repeatedly. Held for the life of the provider rather than re-fetched. A
+    /// `nil` result is cached too, on purpose: "this show needs no correction" is
+    /// exactly the answer that would otherwise be re-asked over the network every
+    /// single time.
+    var seasonCache: [Int: SeasonStructure?] = [:]
 
     /// - Parameter accessToken: a TMDB v4 read access token, sent as a bearer
     ///   token. Sourced by the caller — Slate does not know where it came from.
@@ -26,7 +33,7 @@ public actor TMDBProvider: MetadataProvider {
         self.accessToken = accessToken
     }
 
-    private var headers: [String: String] {
+    var headers: [String: String] {
         ["Authorization": "Bearer \(accessToken)", "Accept": "application/json"]
     }
 
