@@ -211,6 +211,20 @@ struct SeasonStructureTests {
         #expect(range?.episodes == 21...41, "The Entry is TMDB S1 E21–41")
     }
 
+    @Test func anAbsoluteFilenameNumberReachesTheProvidersOwnNumbering() throws {
+        let structure = try bleachStructure()
+
+        // A pack file called `Bleach - 21` has to be filed twice over: under the
+        // arc a person browses, and under the number the provider knows it by.
+        // The two calls chain, so an acquisition layer reading an absolute number
+        // off a filename has somewhere to put it.
+        let shown = try #require(structure.position(ofAbsolute: 21))
+        let native = try #require(structure.nativePosition(ofSeason: shown.season, episode: shown.episode))
+
+        #expect(shown == EpisodePosition(season: 2, episode: 1), "arc two, first episode")
+        #expect(native == EpisodePosition(season: 1, episode: 21), "TMDB still calls it S1E21")
+    }
+
     @Test func aShownSeasonKnowsWhichRealSeasonItLivesIn() throws {
         let structure = try bleachStructure()
 
