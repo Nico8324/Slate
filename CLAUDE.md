@@ -47,6 +47,14 @@ a path does not.
   first spelling survives so a romaji-first list stays romaji-first. Both halves
   are claims about names, never about a destination — a transport with its own
   folding rule folds at its own boundary.
+- **Nothing here acts on provenance.** `provenance`, `provider(of:)` and
+  `bestProvider` report; no code in this package branches on them. That is what
+  makes the public initialisers on `Attributed`, `Field` and `Artwork` safe
+  despite carrying a claim about origin: a fabricated attribution can only
+  mislead whoever fabricated it, and an app rebuilding persisted metadata is
+  supplying it honestly. The day something in here branches on provenance, every
+  one of those initialisers becomes a door into a claim the package relies on —
+  a breaking change with no signature moving, and one to brief before tagging.
 - **Nothing is clamped.** An absolute number past the end of a run, an ordering
   that does not account for an episode, a rating in a region the provider does
   not cover — each returns `nil`. A plausible answer hides the problem; an
