@@ -30,6 +30,14 @@ looking.
   credential we already have — the same shape as `TVDB Order` arriving without a
   TheTVDB key.
 
+### Caught by running it
+
+Season artwork takes the **provider's own** season number, and the parameter is
+named `nativeSeason` to say so. Bleach's arc season 2 lives inside TMDB's season
+1; asking TMDB for "season 2" returns Thousand-Year Blood War's 58 posters — a
+real picture of the wrong thing, with nothing in the result to indicate it.
+`SeasonStructure.nativeSeason(ofSeason:)` does the translation.
+
 ### Notes
 
 TMDB reports `""` as the language of an image with no text on it. Slate reads

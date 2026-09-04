@@ -9,17 +9,17 @@ extension TMDBProvider: ArtworkProvider {
     /// be reasoned about — and asking for one language means a second request
     /// when it turns out to have none, which for a picker is the wrong shape
     /// entirely.
-    public func artwork(for ids: Identifiers, kind: Kind, season: Int? = nil) async throws -> ArtworkSet? {
+    public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
 
         let path: String
-        switch (kind, season) {
+        switch (kind, nativeSeason) {
         case (.movie, _):
             guard let id = ids.tmdb else { return nil }
             path = "/movie/\(id)/images"
-        case (.series, let season?):
+        case (.series, let nativeSeason?):
             guard let id = try await showID(for: ids) else { return nil }
-            path = "/tv/\(id)/season/\(season)/images"
+            path = "/tv/\(id)/season/\(nativeSeason)/images"
         case (.series, nil):
             guard let id = try await showID(for: ids) else { return nil }
             path = "/tv/\(id)/images"
@@ -71,8 +71,8 @@ extension AniListProvider: ArtworkProvider {
     /// AniList holds one cover and one banner per entry, and no language or
     /// rating for either. They are worth having because AniList's cover is the
     /// one anime viewers recognise, but there is nothing here to choose between.
-    public func artwork(for ids: Identifiers, kind: Kind, season: Int? = nil) async throws -> ArtworkSet? {
-        guard season == nil, let id = ids.aniList else { return nil }
+    public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
+        guard nativeSeason == nil, let id = ids.aniList else { return nil }
         guard let snapshot = try await snapshot(for: Lookup(ids: Identifiers(aniList: id))) else {
             return nil
         }

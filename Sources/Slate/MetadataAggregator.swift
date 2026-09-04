@@ -84,8 +84,12 @@ public struct MetadataAggregator: Sendable {
     /// the rest still answer. Use ``ArtworkSet/best(_:preferring:)`` to choose
     /// one, or hand the whole list to a picker.
     ///
-    /// - Parameter season: a season's own posters, or `nil` for the title's.
-    public func artwork(for ids: Identifiers, kind: Kind, season: Int? = nil) async -> ArtworkSet {
+    /// - Parameter nativeSeason: the **provider's own** season number, not one
+    ///   from a corrected ``SeasonStructure``. Translate first with
+    ///   ``SeasonStructure/nativeSeason(ofSeason:)``: Bleach's arc season 2 lives
+    ///   inside TMDB's season 1, and passing 2 straight through returns the
+    ///   posters for Thousand-Year Blood War.
+    public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async -> ArtworkSet {
         let capable = providers.compactMap { $0 as? any ArtworkProvider }
         var byProvider: [Provider: ArtworkSet] = [:]
         var failures: [Provider: String] = [:]
@@ -93,7 +97,7 @@ public struct MetadataAggregator: Sendable {
         await withTaskGroup(of: (Provider, Result<ArtworkSet?, any Error>).self) { group in
             for provider in capable {
                 group.addTask {
-                    do { return (provider.provider, .success(try await provider.artwork(for: ids, kind: kind, season: season))) }
+                    do { return (provider.provider, .success(try await provider.artwork(for: ids, kind: kind, nativeSeason: nativeSeason))) }
                     catch { return (provider.provider, .failure(error)) }
                 }
             }

@@ -198,8 +198,19 @@ The choosing rules are the domain knowledge, and they are not the same per kind:
 | Within a tier | the provider's rating, then the larger image. |
 
 TMDB reports `""` for an image with no text on it; Slate reads that as textless
-rather than as a language called empty string. Season posters come from
-`artwork(for:kind:season:)`, and episodes carry their own `stillURL`.
+rather than as a language called empty string. Episodes carry their own
+`stillURL`.
+
+Season posters take the **provider's own** season number, not a corrected one:
+
+```swift
+let native = structure.nativeSeason(ofSeason: 2)          // Bleach arc 2 → TMDB 1
+await slate.artwork(for: ids, kind: .series, nativeSeason: native)
+```
+
+Bleach's arc season 2 lives inside TMDB's season 1, so passing `2` straight
+through returns Thousand-Year Blood War's posters — a real picture of the wrong
+thing, with nothing to indicate it.
 
 ```swift
 poster.sized(atLeast: 342)   // the width the grid needs, not 4 MB

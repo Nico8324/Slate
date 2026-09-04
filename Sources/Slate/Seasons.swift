@@ -185,6 +185,20 @@ public struct SeasonStructure: Sendable, Equatable {
         return (first.season, low...high)
     }
 
+    /// Which of the provider's own seasons a shown season lives in.
+    ///
+    /// Needed wherever a number is handed back to the provider — its artwork
+    /// endpoints, for one. Bleach's arc season 2 is inside TMDB's season 1, and
+    /// asking TMDB for "season 2" gets the posters for Thousand-Year Blood War
+    /// instead: a real picture, of the wrong thing, with nothing to indicate it.
+    ///
+    /// `nil` when the ordering does not account for that season.
+    public func nativeSeason(ofSeason season: Int) -> Int? {
+        if case .native = ordering { return season }
+        return nativeRange(ofSeason: season)?.season
+            ?? nativePosition(ofSeason: season, episode: 1)?.season
+    }
+
     /// Turning `Bleach - 340` into the season and episode it is shown under.
     ///
     /// Anime is numbered straight through its whole run: a filename says `12` and

@@ -211,6 +211,25 @@ struct SeasonStructureTests {
         #expect(range?.episodes == 21...41, "The Entry is TMDB S1 E21–41")
     }
 
+    @Test func aShownSeasonKnowsWhichRealSeasonItLivesIn() throws {
+        let structure = try bleachStructure()
+
+        // Bleach's arc season 2 is inside TMDB's season 1. Handing "2" to an
+        // artwork endpoint would return Thousand-Year Blood War's posters —
+        // a real picture of the wrong thing.
+        #expect(structure.nativeSeason(ofSeason: 2) == 1)
+        #expect(structure.nativeSeason(ofSeason: 99) == nil)
+    }
+
+    @Test func anUncorrectedShowsSeasonsAreItsOwn() {
+        let structure = SeasonStructure(
+            nativeSeasons: [Season(number: 1, episodeCount: 24), Season(number: 2, episodeCount: 25)],
+            provider: .tmdb
+        )
+
+        #expect(structure.nativeSeason(ofSeason: 2) == 2)
+    }
+
     @Test func translationWorksInBothDirections() throws {
         let structure = try bleachStructure()
 
