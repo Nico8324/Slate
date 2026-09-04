@@ -195,13 +195,6 @@ struct SeasonStructureTests {
         #expect(structure.position(ofAbsolute: 0) == nil)
     }
 
-    @Test func absoluteAndPositionAreInverses() throws {
-        let structure = try bleachStructure()
-
-        #expect(structure.absolute(ofSeason: 2, episode: 1) == 21)
-        #expect(structure.absolute(ofSeason: 2, episode: 21) == 41)
-        #expect(structure.absolute(ofSeason: 2, episode: 22) == nil)
-    }
 
     @Test func anArcTranslatesToTheRangeAnIndexerCanBeAsked() throws {
         let structure = try bleachStructure()

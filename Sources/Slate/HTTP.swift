@@ -51,8 +51,7 @@ struct HTTP: Sendable {
         url: URL,
         method: String = "GET",
         headers: [String: String] = [:],
-        body: Data? = nil,
-        decoder: @Sendable () -> JSONDecoder = { JSONDecoder() }
+        body: Data? = nil
     ) async throws -> Response {
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -68,7 +67,7 @@ struct HTTP: Sendable {
             await limiter?.waitForTurn()
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else {
-                return try decoder().decode(Response.self, from: data)
+                return try JSONDecoder().decode(Response.self, from: data)
             }
 
             if http.statusCode == 429 || (500..<600).contains(http.statusCode) {
@@ -84,7 +83,7 @@ struct HTTP: Sendable {
                 throw SlateError.http(status: http.statusCode,
                                       body: String(decoding: data.prefix(512), as: UTF8.self))
             }
-            return try decoder().decode(Response.self, from: data)
+            return try JSONDecoder().decode(Response.self, from: data)
         }
         throw SlateError.rateLimited(retryAfter: lastRetryAfter)
     }

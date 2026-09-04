@@ -70,58 +70,17 @@ public struct MetadataAggregator: Sendable {
     /// question and several requests more expensive. A caller asking *what is
     /// this* should not pay for episode lists it did not ask for.
     public func seasons(for ids: Identifiers) async -> SeasonStructure? {
-        let capable = providers.compactMap { $0 as? any SeasonProvider }
-            .sorted { rank($0.provider) < rank($1.provider) }
-        for provider in capable {
+        for provider in providers.compactMap({ $0 as? TMDBProvider }) {
             if let structure = try? await provider.seasons(for: ids) { return structure }
         }
         return nil
     }
 
-    /// What a search might have meant, in ``priority`` order.
-    ///
-    /// For when a person should choose rather than be given an answer. Providers
-    /// that fail are skipped: a partial list beats a failed search.
-    public func candidates(for query: String, kind: Kind? = nil) async -> [Candidate] {
-        let capable = providers.compactMap { $0 as? any CandidateProvider }
-            .sorted { rank($0.provider) < rank($1.provider) }
-        var results: [Candidate] = []
-        for provider in capable {
-            results += (try? await provider.candidates(for: query, kind: kind)) ?? []
-        }
-        return results
-    }
-
-    /// A whole library, paced.
     ///
     /// Results come back in the order asked. Concurrency is bounded because a
     /// scan is the case that breaks things: three hundred titles started at once
     /// is a thousand requests in flight, and the providers answer that with 429s
     /// whatever the rate limiter would have preferred.
-    public func metadata(for lookups: [Lookup], maxConcurrent: Int = 4) async -> [TitleMetadata] {
-        guard !lookups.isEmpty else { return [] }
-        var results = [TitleMetadata?](repeating: nil, count: lookups.count)
-
-        await withTaskGroup(of: (Int, TitleMetadata).self) { group in
-            var next = 0
-            for _ in 0..<min(max(maxConcurrent, 1), lookups.count) {
-                let index = next
-                group.addTask { (index, await self.metadata(for: lookups[index])) }
-                next += 1
-            }
-            while let (index, result) = await group.next() {
-                results[index] = result
-                if next < lookups.count {
-                    let index = next
-                    group.addTask { (index, await self.metadata(for: lookups[index])) }
-                    next += 1
-                }
-            }
-        }
-        return results.map { $0 ?? TitleMetadata() }
-    }
-
-    /// Every image every provider holds, merged in ``priority`` order.
     ///
     /// Never throws: a provider that fails lands in ``ArtworkSet/failures`` and
     /// the rest still answer. Use ``ArtworkSet/best(_:preferring:)`` to choose
@@ -180,7 +139,6 @@ public struct MetadataAggregator: Sendable {
         result.isAnime = field(.isAnime, snapshots) { $0.isAnime }
         result.contentRating = field(.contentRating, snapshots) { $0.contentRating }
         result.trailerYouTubeID = field(.trailerYouTubeID, snapshots) { $0.trailerYouTubeID }
-        result.cast = field(.cast, snapshots) { $0.cast }
 
         result.searchNames = sorted(snapshots, by: priority).flatMap(\.1.searchNames).deduplicatedNames
         return result

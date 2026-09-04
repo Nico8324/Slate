@@ -1,6 +1,6 @@
 import Foundation
 
-extension TMDBProvider: SeasonProvider {
+extension TMDBProvider {
 
     /// How a series is divided — corrected, where TMDB's own answer is one
     /// nobody else uses.
@@ -20,30 +20,6 @@ extension TMDBProvider: SeasonProvider {
         let resolved = try await resolveSeasons(showID: showID)
         seasonCache[showID] = resolved
         return resolved
-    }
-
-    /// Forgets what was worked out — for a test, or for someone who changed the
-    /// metadata language, since ordering names are localised even though the
-    /// numbering is not.
-    public func forgetSeasons() {
-        seasonCache.removeAll()
-    }
-
-    /// The episodes of one season, for the ordinary path where they are not
-    /// already in hand. The episode-group path fills them for free.
-    public func episodes(ofShow showID: Int, season: Int) async throws -> [Episode] {
-        guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
-        let url = try URL.build(Self.api, path: "/tv/\(showID)/season/\(season)")
-        return try await http.json(SeasonPage.self, url: url, headers: headers).episodes.map {
-            Episode(
-                season: $0.season_number ?? season,
-                number: $0.episode_number,
-                title: $0.name?.nilIfEmpty,
-                airDate: $0.air_date?.asReleaseDate,
-                tmdbID: $0.id,
-                stillURL: $0.still_path.flatMap { URL(string: "\(Self.images)/original\($0)") }
-            )
-        }
     }
 
     // MARK: - Deciding
@@ -263,18 +239,6 @@ extension TMDBProvider: SeasonProvider {
             let name: String?
         }
         let seasons: [SeasonEntry]?
-    }
-
-    private struct SeasonPage: Decodable {
-        struct EpisodeEntry: Decodable {
-            let id: Int?
-            let name: String?
-            let air_date: String?
-            let still_path: String?
-            let season_number: Int?
-            let episode_number: Int
-        }
-        let episodes: [EpisodeEntry]
     }
 
     struct FindIDs: Decodable {

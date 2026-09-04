@@ -222,30 +222,4 @@ public struct SeasonStructure: Sendable, Equatable {
         }
         return nil
     }
-
-    /// The absolute number of an episode shown at `season`/`episode`, or `nil`
-    /// past the end of the run.
-    public func absolute(ofSeason season: Int, episode: Int) -> Int? {
-        var running = 0
-        for entry in numberedSeasons {
-            if entry.number == season {
-                guard episode >= 1, episode <= entry.episodeCount else { return nil }
-                return running + episode
-            }
-            running += entry.episodeCount
-        }
-        return nil
-    }
-}
-
-/// A provider that can also say how a series is divided.
-///
-/// Separate from ``MetadataProvider`` because it is a separate question and
-/// several requests more expensive: not every provider can answer it, and a
-/// caller asking "what is this" should not pay for episode lists it did not ask
-/// for.
-public protocol SeasonProvider: MetadataProvider {
-    /// `nil` when this provider cannot say — no id it understands, or not a
-    /// series.
-    func seasons(for ids: Identifiers) async throws -> SeasonStructure?
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 /// A metadata source. Every value Slate returns is attributed to one of these.
-public enum Provider: String, Sendable, Hashable, Codable, CaseIterable {
+public enum Provider: String, Sendable, Hashable {
     /// The IMDb id, western movies and television, art, ratings.
     case tmdb
     /// Anime: whether a title is one at all, its romaji and native names,
@@ -40,9 +40,6 @@ public struct Field<Value: Sendable & Equatable>: Sendable, Equatable {
 
     public var isEmpty: Bool { candidates.isEmpty }
 
-    /// What the providers that lost said. Empty in the ordinary case where one
-    /// provider answered, or where they agreed on who ranks first.
-    public var dissent: [Attributed<Value>] { Array(candidates.dropFirst()) }
 
     /// What one specific provider said, whatever the priority order.
     public func value(from provider: Provider) -> Value? {

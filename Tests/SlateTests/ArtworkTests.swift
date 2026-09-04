@@ -8,8 +8,7 @@ private func art(
 ) -> Artwork {
     Artwork(
         kind: kind, url: URL(string: "https://image.tmdb.org/t/p/original\(path)")!,
-        language: language, width: width, height: width, rating: rating, provider: provider,
-        sizingBase: "https://image.tmdb.org/t/p", path: path
+        language: language, width: width, height: width, rating: rating, provider: provider
     )
 }
 
@@ -65,21 +64,7 @@ struct ArtworkChoiceTests {
         #expect(ArtworkSet().isEmpty)
     }
 
-    @Test func anImageComesInTheSizeTheGridAsksFor() {
-        let poster = art(.poster, "en")
 
-        #expect(poster.sized(atLeast: 300).absoluteString.contains("/w342/"))
-        #expect(poster.sized(atLeast: 92).absoluteString.contains("/w92/"))
-        // Past the largest offered size, the original stands in.
-        #expect(poster.sized(atLeast: 4000).absoluteString.contains("/original/"))
-    }
-
-    @Test func aProviderThatServesOneSizeReturnsIt() {
-        let cover = Artwork(kind: .poster, url: URL(string: "https://s4.anilist.co/x.jpg")!,
-                            provider: .aniList)
-
-        #expect(cover.sized(atLeast: 200) == cover.url)
-    }
 
     @Test func anEmptyLanguageIsTextlessNotALanguage() throws {
         // TMDB says "" for an image with no text on it.

@@ -106,14 +106,6 @@ struct AggregationTests {
         #expect(result.providersConsulted(for: .title) == [.aniList, .tmdb])
     }
 
-    @Test func dissentIsReachableButNotTheDefaultRead() {
-        let result = aggregator.assemble([.tmdb: tmdbSnapshot, .aniList: aniListSnapshot])
-
-        #expect(result.overview.best == "AniList's summary")
-        #expect(result.overview.dissent.map(\.provider) == [.tmdb])
-        #expect(result.overview.dissent.first?.value == "TMDB's summary")
-        #expect(aggregator.assemble([.tmdb: tmdbSnapshot]).overview.dissent.isEmpty)
-    }
 
     @Test func resolveInputNeedsAnIMDbIDAndAKind() {
         #expect(aggregator.assemble([.aniList: aniListSnapshot]).resolveInput == nil)

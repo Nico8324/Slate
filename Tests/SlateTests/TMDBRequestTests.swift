@@ -151,30 +151,6 @@ extension TMDBRequestTests {
   @Suite(.serialized)
   struct RecordFields {
 
-    @Test func aSeriesCarriesItsRatingTrailerAndCast() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/search/tv", json: #"{"results":[{"id":1396,"name":"X","popularity":9.0}]}"#)
-        StubURLProtocol.stub("/tv/1396", json: """
-        {"id":1396,"name":"Breaking Bad",
-         "content_ratings":{"results":[{"iso_3166_1":"FR","rating":"16"},{"iso_3166_1":"US","rating":"TV-MA"}]},
-         "videos":{"results":[
-            {"key":"teaser1","site":"YouTube","type":"Teaser","official":true},
-            {"key":"unofficial","site":"YouTube","type":"Trailer","official":false},
-            {"key":"official1","site":"YouTube","type":"Trailer","official":true}]},
-         "aggregate_credits":{"cast":[
-            {"id":17419,"name":"Bryan Cranston","roles":[{"character":"Walter White"}],"order":0,"profile_path":"/b.jpg"},
-            {"id":84497,"name":"Aaron Paul","roles":[{"character":"Jesse Pinkman"}],"order":1}]}}
-        """)
-
-        let snapshot = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .series)))
-
-        #expect(snapshot.contentRating == "TV-MA")
-        #expect(snapshot.trailerYouTubeID == "official1", "official trailer over teaser or unofficial")
-        #expect(snapshot.cast?.first?.name == "Bryan Cranston")
-        #expect(snapshot.cast?.first?.character == "Walter White")
-        #expect(snapshot.cast?.count == 2)
-        #expect(snapshot.cast?.first?.profileURL?.absoluteString.hasSuffix("/b.jpg") == true)
-    }
 
     @Test func theRatingIsTheAskedForCountrysOrNothing() async throws {
         StubURLProtocol.reset()
@@ -197,42 +173,14 @@ extension TMDBRequestTests {
         StubURLProtocol.stub("/movie/603", json: """
         {"id":603,"title":"The Matrix",
          "release_dates":{"results":[{"iso_3166_1":"US","release_dates":[{"certification":""},{"certification":"R"}]}]},
-         "credits":{"cast":[{"id":6384,"name":"Keanu Reeves","character":"Neo","order":0}]}}
+        }
         """)
 
         let snapshot = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .movie)))
 
         #expect(snapshot.contentRating == "R", "the blank entry is skipped")
-        #expect(snapshot.cast?.first?.character == "Neo")
     }
 
-    @Test func castComesBackInBillingOrder() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/search/tv", json: #"{"results":[{"id":1,"name":"X","popularity":1.0}]}"#)
-        StubURLProtocol.stub("/tv/1", json: """
-        {"id":1,"name":"X","aggregate_credits":{"cast":[
-          {"id":2,"name":"Second","order":5},{"id":1,"name":"First","order":0}]}}
-        """)
 
-        let snapshot = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .series)))
-        #expect(snapshot.cast?.map(\.name) == ["First", "Second"])
-    }
-
-    @Test func aSearchCanReturnEveryCandidateInsteadOfPickingOne() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/search/multi", json: """
-        {"results":[
-          {"id":12971,"media_type":"tv","name":"Dragon Ball Z","first_air_date":"1989-04-26","poster_path":"/z.jpg"},
-          {"id":12609,"media_type":"tv","name":"Dragon Ball","first_air_date":"1986-02-26"},
-          {"id":99,"media_type":"person","name":"Akira Toriyama"}]}
-        """)
-
-        let candidates = try await provider().candidates(for: "Dragon Ball", kind: nil)
-
-        #expect(candidates.count == 2, "the person is not a title")
-        #expect(candidates.map(\.title) == ["Dragon Ball Z", "Dragon Ball"])
-        #expect(candidates.map(\.year) == [1989, 1986])
-        #expect(candidates.first?.posterURL != nil)
-    }
 }
 }

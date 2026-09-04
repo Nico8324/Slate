@@ -4,6 +4,52 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-09-04
+
+A ponytail audit, applied. **436 lines removed, nothing added.** Every removal
+had zero callers outside its own tests — verified by grep, not assumed. Breaking,
+because most of it was public.
+
+### Removed
+
+- **The candidate list.** `candidates(for:kind:)`, `Candidate`, `CandidateProvider`
+  and the whole search-candidates file. Built so a person could disambiguate
+  "Dragon Ball"; the actual fix was exact-title matching, which shipped in 0.1.2
+  and works. Nothing ever called it.
+- **Cast.** `CastMember`, both credits payloads, `castMembers`, `profileURL`.
+  Added because a plan listed "People / Cast". Unlike `contentRating` and
+  `trailerYouTubeID`, which were built against call sites that exist in the
+  consuming app today, this had none — the difference between deferred and
+  speculative.
+- **`Artwork.sized(atLeast:)`** and the two fields that existed to serve it. The
+  grid argument is real and hypothetical; a consumer can append `/w342/`.
+- **`AniListProvider.artwork`.** It refetched the entire record over GraphQL to
+  return two URLs `metadata(for:)` already returns.
+- **`metadata(for: [Lookup], maxConcurrent:)`.** A library scan no caller
+  performs. The rate limiter already paces a plain loop.
+- **`TMDBProvider.episodes(ofShow:season:)`** and its payload, **`forgetSeasons()`**,
+  **`SeasonStructure.absolute(ofSeason:episode:)`**, **`Field.dissent`**,
+  **`Identifiers.isEmpty`** — five public members, zero non-test callers.
+- **`SeasonProvider` and `CandidateProvider`**, one conformer each.
+  `ArtworkProvider` has two and stays.
+- **`Codable` on `Provider`, `Kind`, `Identifiers`, `FieldKey`, `ArtworkKind`,
+  and `CaseIterable` on `Provider` and `ArtworkKind`.** Nothing encodes any of
+  them; `allCases` is read once, on `FieldKey`. This is the conformance-for-nobody
+  that CinemaResolvers cut six public symbols for in its own 2.0.0.
+- **The `decoder:` parameter on the internal HTTP helper**, which had one
+  occurrence: its declaration.
+
+### Kept, and why
+
+`Field`, `Attributed`, `FieldKey` and `provenance` have no caller either — the
+consuming app takes `searchNames` and nothing else. They are the reason this
+package exists rather than being a thin TMDB client, and an audit that cuts them
+has audited the requirement instead of the code. `contentRating` and
+`trailerYouTubeID` stay for the same reason in reverse: the call sites are
+written, in another repository, today.
+
+58 tests, down from 65 — the seven removed tested only removed API.
+
 ## [0.4.3] — 2026-09-04
 
 Documentation only; behaviour unchanged. Tagged for the same reason 0.4.2 was —
@@ -454,6 +500,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.5.0]: https://github.com/Nico8324/Slate/releases/tag/v0.5.0
 [0.4.3]: https://github.com/Nico8324/Slate/releases/tag/v0.4.3
 [0.4.2]: https://github.com/Nico8324/Slate/releases/tag/v0.4.2
 [0.4.1]: https://github.com/Nico8324/Slate/releases/tag/v0.4.1

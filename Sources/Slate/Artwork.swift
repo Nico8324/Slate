@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ArtworkKind: String, Sendable, Hashable, Codable, CaseIterable {
+public enum ArtworkKind: String, Sendable, Hashable {
     case poster
     case backdrop
     /// A transparent title treatment. TMDB holds these, so they cost no second
@@ -24,17 +24,12 @@ public struct Artwork: Sendable, Equatable, Identifiable {
     public let rating: Double?
     public let provider: Provider
 
-    /// The size-agnostic part of the URL, when the provider serves the same
-    /// image at several widths.
-    private let sizingBase: String?
-    private let path: String?
 
     public var id: URL { url }
 
     public init(
         kind: ArtworkKind, url: URL, language: String? = nil, width: Int? = nil,
-        height: Int? = nil, rating: Double? = nil, provider: Provider,
-        sizingBase: String? = nil, path: String? = nil
+        height: Int? = nil, rating: Double? = nil, provider: Provider
     ) {
         self.kind = kind
         self.url = url
@@ -43,30 +38,9 @@ public struct Artwork: Sendable, Equatable, Identifiable {
         self.height = height
         self.rating = rating
         self.provider = provider
-        self.sizingBase = sizingBase
-        self.path = path
     }
 
     public var isTextless: Bool { language == nil }
-
-    /// The same image at the smallest width the provider offers that is at least
-    /// `width`, falling back to the original.
-    ///
-    /// A grid of posters at full size is several megabytes an item, which on a
-    /// television is the difference between a list that scrolls and one that
-    /// does not. Providers that serve only one size return it unchanged.
-    public func sized(atLeast width: Int) -> URL {
-        guard let sizingBase, let path else { return url }
-        let available: [Int] = switch kind {
-        case .poster: [92, 154, 185, 342, 500, 780]
-        case .backdrop, .still: [300, 780, 1280]
-        case .logo: [45, 92, 154, 185, 300, 500]
-        }
-        guard let fit = available.first(where: { $0 >= width }),
-              let sized = URL(string: "\(sizingBase)/w\(fit)\(path)")
-        else { return url }
-        return sized
-    }
 }
 
 /// Every image a title has, by kind, from every provider that answered.

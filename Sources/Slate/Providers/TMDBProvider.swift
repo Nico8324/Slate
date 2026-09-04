@@ -117,8 +117,8 @@ public actor TMDBProvider: MetadataProvider {
         // One request rather than five. `append_to_response` costs nothing extra
         // and these are exactly the fields a library sets on a record.
         let extras = kind == .movie
-            ? "external_ids,release_dates,videos,credits"
-            : "external_ids,content_ratings,videos,aggregate_credits"
+            ? "external_ids,release_dates,videos"
+            : "external_ids,content_ratings,videos"
         let url = try URL.build(Self.api, path: path,
                                 query: ["append_to_response": extras, "language": language])
         let payload = try await http.json(Details.self, url: url, headers: headers)
@@ -144,7 +144,6 @@ public actor TMDBProvider: MetadataProvider {
             isAnime: nil,
             contentRating: payload.certification(in: region),
             trailerYouTubeID: payload.videos?.trailerKey,
-            cast: payload.castMembers,
             searchNames: [title, originalTitle].compactMap { $0?.nilIfEmpty }.deduplicatedNames
         )
     }
@@ -168,12 +167,6 @@ public actor TMDBProvider: MetadataProvider {
         }
         guard !sameTitle.isEmpty else { return results.first }
         return sameTitle.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }
-    }
-
-    static func profileURL(_ path: String?) -> URL? {
-        guard let path, let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
-        else { return nil }
-        return URL(string: "\(images)/original\(encoded)")
     }
 
     // MARK: - Payloads
@@ -217,8 +210,19 @@ public actor TMDBProvider: MetadataProvider {
         var content_ratings: ContentRatings?
         var release_dates: ReleaseDates?
         var videos: Videos?
-        var credits: Credits?
-        var aggregate_credits: AggregateCredits?
+
+        /// The rating for the asked-for country, or nothing.
+        ///
+        /// No falling back to another country: ratings are not translations of
+        /// each other, and showing a French viewer `TV-MA` is showing them a
+        /// rating from a system they do not use.
+        func certification(in region: String) -> String? {
+            if let entry = content_ratings?.results.first(where: { $0.iso_3166_1 == region }) {
+                return entry.rating?.nilIfEmpty
+            }
+            return release_dates?.results.first { $0.iso_3166_1 == region }?
+                .release_dates.compactMap { $0.certification?.nilIfEmpty }.first
+        }
 
         struct ExternalIDs: Decodable { var imdb_id: String? }
         struct Genre: Decodable { let name: String }
@@ -258,60 +262,6 @@ public actor TMDBProvider: MetadataProvider {
             }
         }
 
-        struct Credits: Decodable {
-            struct Member: Decodable {
-                let id: Int
-                let name: String
-                var character: String?
-                var profile_path: String?
-                var order: Int?
-            }
-            var cast: [Member] = []
-        }
-
-        struct AggregateCredits: Decodable {
-            struct Member: Decodable {
-                struct Role: Decodable { var character: String? }
-                let id: Int
-                let name: String
-                var roles: [Role]?
-                var profile_path: String?
-                var order: Int?
-            }
-            var cast: [Member] = []
-        }
-
-        /// The rating for the asked-for country, or nothing.
-        ///
-        /// No falling back to another country: ratings are not translations of
-        /// each other, and showing a French viewer `TV-MA` is showing them a
-        /// rating from a system they do not use.
-        func certification(in region: String) -> String? {
-            if let entry = content_ratings?.results.first(where: { $0.iso_3166_1 == region }) {
-                return entry.rating?.nilIfEmpty
-            }
-            return release_dates?.results.first { $0.iso_3166_1 == region }?
-                .release_dates.compactMap { $0.certification?.nilIfEmpty }.first
-        }
-
-        var castMembers: [CastMember]? {
-            let members: [CastMember]
-            if let aggregate = aggregate_credits, !aggregate.cast.isEmpty {
-                members = aggregate.cast.map {
-                    CastMember(id: $0.id, name: $0.name,
-                               character: $0.roles?.first?.character?.nilIfEmpty,
-                               profileURL: TMDBProvider.profileURL($0.profile_path), order: $0.order)
-                }
-            } else if let credits, !credits.cast.isEmpty {
-                members = credits.cast.map {
-                    CastMember(id: $0.id, name: $0.name, character: $0.character?.nilIfEmpty,
-                               profileURL: TMDBProvider.profileURL($0.profile_path), order: $0.order)
-                }
-            } else {
-                return nil
-            }
-            return members.sorted { ($0.order ?? .max) < ($1.order ?? .max) }
-        }
     }
 }
 

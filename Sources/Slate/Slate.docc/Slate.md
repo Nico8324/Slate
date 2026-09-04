@@ -84,8 +84,7 @@ art.best(.backdrop)   // textless, for behind a title
 ``ArtworkSet/best(_:preferring:)`` holds the rules, and they differ by kind:
 posters and logos follow the viewer's language, while backdrops prefer a
 **textless** image outright — it is the one that can sit behind a title without
-two sets of words fighting each other. ``Artwork/sized(atLeast:)`` asks for the
-width a grid actually needs.
+two sets of words fighting each other. Nothing is chosen for you beyond that.
 
 ### Handing off to an acquisition layer
 
@@ -110,14 +109,7 @@ Age ratings are not translations of each other: `TV-MA` has no French
 equivalent, France says `16`. ``TMDBProvider`` asks for one region and returns
 nothing rather than a rating from a system the viewer does not use.
 
-``MetadataAggregator/candidates(for:kind:)`` returns what a search might have
-meant, for when a person should choose rather than be handed an answer.
-
 ### A whole library at once
-
-```swift
-let results = await slate.metadata(for: lookups)   // in order, bounded concurrency
-```
 
 Requests are paced and retried. AniList allows about ninety a minute, and a
 corrected show costs three TMDB requests with a fourth for artwork — so a few
@@ -182,7 +174,6 @@ A provider that fails is not an error either. It lands in
 - ``Season``
 - ``Episode``
 - ``EpisodePosition``
-- ``SeasonProvider``
 
 ### Handing off
 
@@ -194,14 +185,6 @@ A provider that fails is not an error either. It lands in
 - ``Snapshot``
 - ``TMDBProvider``
 - ``AniListProvider``
-
-### Scanning and choosing
-
-- ``MetadataAggregator/metadata(for:maxConcurrent:)``
-- ``MetadataAggregator/candidates(for:kind:)``
-- ``Candidate``
-- ``CandidateProvider``
-- ``CastMember``
 
 ### Errors
 

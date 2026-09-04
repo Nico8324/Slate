@@ -2,13 +2,13 @@ import Foundation
 
 /// What a title is. Slate deliberately knows only these two shapes; season and
 /// episode ordering stay with whoever owns the library.
-public enum Kind: String, Sendable, Hashable, Codable {
+public enum Kind: String, Sendable, Hashable {
     case movie
     case series
 }
 
 /// Cross-provider identifiers for one title.
-public struct Identifiers: Sendable, Hashable, Codable {
+public struct Identifiers: Sendable, Hashable {
     public var imdb: String?
     public var tmdb: Int?
     public var aniList: Int?
@@ -21,7 +21,6 @@ public struct Identifiers: Sendable, Hashable, Codable {
         self.myAnimeList = myAnimeList
     }
 
-    var isEmpty: Bool { imdb == nil && tmdb == nil && aniList == nil && myAnimeList == nil }
 
     mutating func fill(from other: Identifiers) {
         imdb = imdb ?? other.imdb
@@ -38,10 +37,10 @@ public struct Identifiers: Sendable, Hashable, Codable {
 /// rather than as a dozen hand-written branches that drift apart. Slate decides
 /// which provider wins a field; whether a human outranks that decision is the
 /// consumer's call, and this is what makes it writable.
-public enum FieldKey: String, Sendable, Hashable, Codable, CaseIterable {
+public enum FieldKey: String, Sendable, Hashable, CaseIterable {
     case kind, title, originalTitle, overview, releaseDate, runtimeMinutes
     case episodeCount, genres, rating, posterURL, backdropURL, isAnime
-    case contentRating, trailerYouTubeID, cast
+    case contentRating, trailerYouTubeID
 }
 
 /// The aggregated answer for one title: every field carries every provider's
@@ -65,7 +64,6 @@ public struct TitleMetadata: Sendable, Equatable {
     public var contentRating: Field<String>
     /// A YouTube key, not a URL — a player wants the id.
     public var trailerYouTubeID: Field<String>
-    public var cast: Field<[CastMember]>
 
     /// Every name this title is known by, highest-priority provider first and
     /// deduplicated — romaji ahead of English for anime, because that is what a
@@ -92,7 +90,6 @@ public struct TitleMetadata: Sendable, Equatable {
         isAnime: Field<Bool> = .init(),
         contentRating: Field<String> = .init(),
         trailerYouTubeID: Field<String> = .init(),
-        cast: Field<[CastMember]> = .init(),
         searchNames: [String] = [],
         failures: [Provider: String] = [:]
     ) {
@@ -111,7 +108,6 @@ public struct TitleMetadata: Sendable, Equatable {
         self.isAnime = isAnime
         self.contentRating = contentRating
         self.trailerYouTubeID = trailerYouTubeID
-        self.cast = cast
         self.searchNames = searchNames
         self.failures = failures
     }
@@ -163,7 +159,6 @@ extension TitleMetadata {
         case .isAnime: isAnime.candidates.map(\.provider)
         case .contentRating: contentRating.candidates.map(\.provider)
         case .trailerYouTubeID: trailerYouTubeID.candidates.map(\.provider)
-        case .cast: cast.candidates.map(\.provider)
         }
     }
 
