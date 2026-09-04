@@ -39,9 +39,21 @@ struct FlatteningTests {
                                           Season(number: 2, episodeCount: 13)]))
     }
 
+    @Test func aLoneSeasonLongerThanTwoCoursIsFlattenedToo() {
+        // Jujutsu Kaisen: one season of 59 on TMDB, two seasons everywhere else.
+        // It slipped under the 60 bar by a single episode.
+        #expect(TMDBProvider.isFlattened([Season(number: 1, episodeCount: 59)]))
+        #expect(TMDBProvider.isFlattened([Season(number: 0, episodeCount: 4),
+                                          Season(number: 1, episodeCount: 24)]))
+    }
+
     @Test func ordinaryTelevisionIsLeftAlone() {
         // A twelve-part series genuinely has one season; nothing to fix.
         #expect(!TMDBProvider.isFlattened([Season(number: 1, episodeCount: 12)]))
+        // One long season among many is a different, weaker signal than one long
+        // season alone — this must stay out.
+        #expect(!TMDBProvider.isFlattened([Season(number: 1, episodeCount: 39),
+                                           Season(number: 2, episodeCount: 30)]))
         #expect(!TMDBProvider.isFlattened([Season(number: 1, episodeCount: 24),
                                            Season(number: 2, episodeCount: 25)]))
     }

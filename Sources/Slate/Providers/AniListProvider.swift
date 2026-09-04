@@ -43,7 +43,7 @@ public struct AniListProvider: MetadataProvider, Sendable {
             return true // Looked up by id, or nothing to check against.
         }
         return media.allNames.lazy.map(\.normalizedForMatching).contains { name in
-            name == query || name.contains(query) || query.contains(name)
+            name.looksLikeTheSameTitleAs(query)
         }
     }
 
@@ -164,5 +164,21 @@ extension String {
 
     var normalizedForMatching: String {
         lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    /// Whether two normalised titles are plausibly the same show.
+    ///
+    /// Containment has to be allowed — "Frieren" is how people ask for
+    /// *Sousou no Frieren* — but bare containment is far too generous: a search
+    /// for "Suits" matched *Is This a Zombie? Of the Dead: Yes, This Suits Me
+    /// Just Fine*, and a legal drama was filed as anime. The shorter title must
+    /// therefore be a substantial part of the longer one, not a word buried in
+    /// it. "Frieren" is 47% of "sousounofrieren" and passes; "suits" is 11% of
+    /// that zombie title and does not.
+    func looksLikeTheSameTitleAs(_ other: String) -> Bool {
+        if self == other { return true }
+        let (shorter, longer) = count < other.count ? (self, other) : (other, self)
+        guard !shorter.isEmpty, longer.contains(shorter) else { return false }
+        return Double(shorter.count) >= 0.35 * Double(longer.count)
     }
 }

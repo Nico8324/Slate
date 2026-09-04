@@ -161,6 +161,26 @@ struct ProviderTests {
         #expect(!"الهجوم على العمالقة".isMostlyLatin)
     }
 
+    @Test func aShortQueryDoesNotMatchAWordBuriedInALongAnimeTitle() {
+        // The real failure: searching "Suits" returned *Is This a Zombie? Of the
+        // Dead: Yes, This Suits Me Just Fine*, and a legal drama was filed as
+        // anime.
+        let zombie = "Is This a Zombie? Of the Dead: Yes, This Suits Me Just Fine".normalizedForMatching
+        #expect(!zombie.looksLikeTheSameTitleAs("Suits".normalizedForMatching))
+    }
+
+    @Test func aShorthandTitleStillMatchesTheFullOne() {
+        // ...while the containment that makes this work at all is kept.
+        let frieren = "Sousou no Frieren".normalizedForMatching
+        #expect(frieren.looksLikeTheSameTitleAs("Frieren".normalizedForMatching))
+
+        let demonSlayer = "Demon Slayer: Kimetsu no Yaiba".normalizedForMatching
+        #expect(demonSlayer.looksLikeTheSameTitleAs("Demon Slayer".normalizedForMatching))
+
+        let bleach = "BLEACH".normalizedForMatching
+        #expect(bleach.looksLikeTheSameTitleAs("Bleach".normalizedForMatching))
+    }
+
     @Test func fuzzyTitleMatchingIgnoresPunctuationAndCase() {
         #expect("Fullmetal Alchemist: Brotherhood".normalizedForMatching
                 == "fullmetal alchemist brotherhood".normalizedForMatching)

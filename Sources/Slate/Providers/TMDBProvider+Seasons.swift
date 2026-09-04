@@ -96,7 +96,15 @@ extension TMDBProvider: SeasonProvider {
     /// genuinely has one season; sixty episodes under one number is a database
     /// convenience nobody outside the database shares.
     static func isFlattened(_ seasons: [Season]) -> Bool {
-        seasons.contains { $0.number > 0 && $0.episodeCount >= 60 }
+        let numbered = seasons.filter { $0.number > 0 }
+        if numbered.contains(where: { $0.episodeCount >= 60 }) { return true }
+        // And the case the threshold alone misses: a show filed as a *single*
+        // season that ran longer than two cours. Jujutsu Kaisen is one season of
+        // 59 on TMDB and two seasons everywhere else — it slipped under the bar
+        // by a single episode. One long season is a much stronger signal than one
+        // long season among many, so it can be read at a lower count without
+        // catching ordinary television.
+        return numbered.count == 1 && (numbered.first?.episodeCount ?? 0) >= 24
     }
 
     /// Which ordering to trust, of the several a show may carry.
