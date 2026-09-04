@@ -44,7 +44,9 @@ a path does not.
   in the instance, so a provider constructed per lookup is paced against
   nothing. Changing this breaks a caller with no signature moving.
 - **`deduplicatedNames` promises the ordering**, not just the deduplication: the
-  first spelling survives so a romaji-first list stays romaji-first.
+  first spelling survives so a romaji-first list stays romaji-first. Both halves
+  are claims about names, never about a destination — a transport with its own
+  folding rule folds at its own boundary.
 - **Nothing is clamped.** An absolute number past the end of a run, an ordering
   that does not account for an episode, a rating in a region the provider does
   not cover — each returns `nil`. A plausible answer hides the problem; an

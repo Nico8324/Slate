@@ -4,6 +4,29 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-09-04
+
+Documentation only; behaviour is unchanged. Tagged rather than left on `main`
+because the words *are* the contract, and 0.4.1 shipped the wrong reason for the
+right behaviour.
+
+### Changed
+
+- **`deduplicatedNames` is now justified as a fact about names, not about a
+  destination.** 0.4.1 said it folded case "because the destinations are
+  case-insensitive searches" — which is a fact about a transport, and a published
+  contract resting on one is a contract a future maintainer may reasonably
+  un-fold for a case-sensitive destination. The real reason is simpler and does
+  not depend on anyone's endpoint: capitalisation does not make a different
+  title, so `BLEACH` and `Bleach` name one work. Likewise the ordering, which is
+  now justified by the order being information the *caller* owns — a romaji-first
+  list asserts which name is likeliest — rather than by how one resolver happens
+  to consume it.
+
+  The doc now says explicitly that a destination with its own rule needs its own
+  fold at its own boundary, and that a package should not skip that on the
+  grounds its callers were careful.
+
 ## [0.4.1] — 2026-09-04
 
 Additive only, so an `upToNextMinor` pin picks it up without a bump.
@@ -409,6 +432,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.4.2]: https://github.com/Nico8324/Slate/releases/tag/v0.4.2
 [0.4.1]: https://github.com/Nico8324/Slate/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Nico8324/Slate/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Nico8324/Slate/releases/tag/v0.3.0

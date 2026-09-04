@@ -104,16 +104,21 @@ extension Array where Element == String {
     /// Names, trimmed, blanks dropped, case-insensitively deduplicated, **order
     /// kept**.
     ///
-    /// The contract is the ordering, not the deduplication: a resolver that stops
-    /// at the first name to find anything is choosing by position, so the first
-    /// spelling of a repeated name is the one that survives. A romaji-first list
-    /// stays romaji-first.
+    /// Both halves are claims about *names*, not about any destination they are
+    /// sent to — which is what makes this safe to publish. Capitalisation does
+    /// not make a different title: `BLEACH` and `Bleach` name one work, so the
+    /// list holds it once. And the order a caller gave is information the caller
+    /// owns — a romaji-first list is asserting which name is likeliest, so the
+    /// first spelling of a repeat survives and the order is never rearranged.
     ///
-    /// Case-insensitive because the destinations are case-insensitive searches —
-    /// `BLEACH` and `Bleach` are one question, not two. A caller that must not be
-    /// handed the same name twice includes anyone who pays per request for it:
-    /// for a film whose title and original title match, which is every film in
-    /// its own language, the naive list contains a duplicate.
+    /// A destination with its *own* rule — a search that folds case, an index
+    /// that ignores punctuation — needs its own fold at its own boundary. That
+    /// one is a fact about the transport and does not belong here, and a package
+    /// should not skip it on the grounds that its callers were careful.
+    ///
+    /// Worth having wherever a repeated name costs something: for a film whose
+    /// title and original title match, which is every film in its own language,
+    /// the naive list contains a duplicate.
     public var deduplicatedNames: [String] {
         var seen: Set<String> = []
         return compactMap { name in
