@@ -80,6 +80,15 @@ extension TMDBProvider: SeasonProvider {
         // to have fixed something.
         guard seasons.filter({ $0.number > 0 }).count > 1 else { return plain }
 
+        // Nor is one that leaves the long run standing and files extras beside
+        // it. Hunter x Hunter's `Complete Series` ordering returns the 62-episode
+        // run untouched as season one, then the OVAs as seasons two to four — so
+        // the flattening it was chosen to fix survives, now wearing a correction's
+        // label. The run must actually be broken up.
+        let flattest = native.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0
+        let biggestNow = seasons.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0
+        guard biggestNow < flattest else { return plain }
+
         return SeasonStructure(seasons: seasons, orderingName: group.name,
                                nativeSeasons: native, provider: .tmdb)
     }
@@ -99,12 +108,17 @@ extension TMDBProvider: SeasonProvider {
         let numbered = seasons.filter { $0.number > 0 }
         if numbered.contains(where: { $0.episodeCount >= 60 }) { return true }
         // And the case the threshold alone misses: a show filed as a *single*
-        // season that ran longer than two cours. Jujutsu Kaisen is one season of
-        // 59 on TMDB and two seasons everywhere else — it slipped under the bar
-        // by a single episode. One long season is a much stronger signal than one
-        // long season among many, so it can be read at a lower count without
-        // catching ordinary television.
-        return numbered.count == 1 && (numbered.first?.episodeCount ?? 0) >= 24
+        // season far longer than any season really runs. Jujutsu Kaisen is one
+        // season of 59 on TMDB and two seasons everywhere else — it slipped under
+        // the bar by a single episode.
+        //
+        // Fifty, not two cours. Read at 24 this caught Frieren, whose 38 episodes
+        // TMDB files as one season, and split it into broadcast *cours* — 16, 12,
+        // 10 — which is not how anyone numbers it: releases run straight through
+        // to 28. Anime seasons are twelve or thirteen, occasionally twenty-six;
+        // fifty in one season is unambiguously more than one, and thirty-eight is
+        // not unambiguously anything.
+        return numbered.count == 1 && (numbered.first?.episodeCount ?? 0) >= 50
     }
 
     /// Which ordering to trust, of the several a show may carry.

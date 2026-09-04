@@ -39,12 +39,20 @@ struct FlatteningTests {
                                           Season(number: 2, episodeCount: 13)]))
     }
 
-    @Test func aLoneSeasonLongerThanTwoCoursIsFlattenedToo() {
+    @Test func aLoneSeasonFarLongerThanASeasonIsFlattenedToo() {
         // Jujutsu Kaisen: one season of 59 on TMDB, two seasons everywhere else.
         // It slipped under the 60 bar by a single episode.
         #expect(TMDBProvider.isFlattened([Season(number: 1, episodeCount: 59)]))
         #expect(TMDBProvider.isFlattened([Season(number: 0, episodeCount: 4),
-                                          Season(number: 1, episodeCount: 24)]))
+                                          Season(number: 1, episodeCount: 50)]))
+    }
+
+    @Test func aLongishSingleSeasonIsNotEvidenceOfAnything() {
+        // Frieren is 38 episodes under one number, and read at two cours this
+        // split it into 16/12/10 — cours, not seasons, and not how anyone
+        // numbers it. Thirty-eight is not unambiguously more than one season.
+        #expect(!TMDBProvider.isFlattened([Season(number: 1, episodeCount: 38)]))
+        #expect(!TMDBProvider.isFlattened([Season(number: 1, episodeCount: 26)]))
     }
 
     @Test func ordinaryTelevisionIsLeftAlone() {
@@ -126,6 +134,30 @@ struct FlatteningTests {
         ], coveringAtLeast: 366)
 
         #expect(chosen == nil, "a partial ordering would strand the rest unmapped")
+    }
+}
+
+struct CorrectionRefusalTests {
+    /// Hunter x Hunter's shape: the long run survives as season one and the OVAs
+    /// are filed beside it, so nothing was actually fixed.
+    private let hunterShaped = """
+    { "id": "g", "name": "Complete Series", "groups": [
+      { "order": 1, "name": "Hunter x Hunter", "episodes": [
+          \((1...62).map { "{ \"season_number\": 1, \"episode_number\": \($0) }" }.joined(separator: ",")) ] },
+      { "order": 2, "name": "OVA", "episodes": [
+          \((1...8).map { "{ \"season_number\": 2, \"episode_number\": \($0) }" }.joined(separator: ",")) ] } ] }
+    """
+
+    @Test func anOrderingThatLeavesTheLongRunStandingIsRefused() throws {
+        let group = try JSONDecoder().decode(
+            TMDBProvider.EpisodeGroupPayload.self, from: Data(hunterShaped.utf8)
+        )
+        let seasons = TMDBProvider.seasons(from: group)
+        let flattest = 62
+        let biggestNow = seasons.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0
+
+        #expect(seasons.filter { $0.number > 0 }.count > 1, "it does split into several")
+        #expect(!(biggestNow < flattest), "but the 62-episode run is still there, so it fixed nothing")
     }
 }
 
