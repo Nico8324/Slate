@@ -4,6 +4,42 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-09-04
+
+Artwork, on the same principle as the rest: one URL is not an answer when a show
+has forty posters in a dozen languages and the right one depends on who is
+looking.
+
+### Added
+
+- **`ArtworkSet` and `Artwork`.** Every poster, backdrop and logo every provider
+  holds, each carrying its language, size, rating and provider. Unsorted, because
+  a consumer offering a picker wants the list — `best(_:preferring:)` applies the
+  rules when a consumer wants one image.
+- **Choosing rules that differ by kind**, which is the domain knowledge worth
+  having. Posters and logos follow the viewer's language, and a *textless* image
+  beats one in a language nobody asked for — a title treatment in a script the
+  viewer cannot read is worse than none. Backdrops invert it: textless wins
+  outright, because that is the one that can sit behind a title without two sets
+  of words fighting each other. Within a tier, rating then size.
+- **`Artwork.sized(atLeast:)`.** A grid of full-size posters is several megabytes
+  an item, which on a television is the difference between a list that scrolls and
+  one that does not. Providers serving a single size return it unchanged.
+- **Season posters** via `artwork(for:kind:season:)`, and `Episode.stillURL`.
+- **Logos, without a Fanart.tv key.** TMDB serves them in every language on the
+  credential we already have — the same shape as `TVDB Order` arriving without a
+  TheTVDB key.
+
+### Notes
+
+TMDB reports `""` as the language of an image with no text on it. Slate reads
+that as textless rather than as a language called empty string, which is the
+difference between finding the best backdrop and never finding one.
+
+Images are fetched unfiltered rather than asking TMDB for one language: filtering
+server-side means a second request whenever that language turns out to have
+nothing, and for a picker it is the wrong shape entirely.
+
 ## [0.1.2] — 2026-09-04
 
 Everything here came out of running real shows against the live API rather than
@@ -251,6 +287,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.2.0]: https://github.com/Nico8324/Slate/releases/tag/v0.2.0
 [0.1.2]: https://github.com/Nico8324/Slate/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Nico8324/Slate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Nico8324/Slate/releases/tag/v0.1.0

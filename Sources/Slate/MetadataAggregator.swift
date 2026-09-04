@@ -78,6 +78,40 @@ public struct MetadataAggregator: Sendable {
         return nil
     }
 
+    /// Every image every provider holds, merged in ``priority`` order.
+    ///
+    /// Never throws: a provider that fails lands in ``ArtworkSet/failures`` and
+    /// the rest still answer. Use ``ArtworkSet/best(_:preferring:)`` to choose
+    /// one, or hand the whole list to a picker.
+    ///
+    /// - Parameter season: a season's own posters, or `nil` for the title's.
+    public func artwork(for ids: Identifiers, kind: Kind, season: Int? = nil) async -> ArtworkSet {
+        let capable = providers.compactMap { $0 as? any ArtworkProvider }
+        var byProvider: [Provider: ArtworkSet] = [:]
+        var failures: [Provider: String] = [:]
+
+        await withTaskGroup(of: (Provider, Result<ArtworkSet?, any Error>).self) { group in
+            for provider in capable {
+                group.addTask {
+                    do { return (provider.provider, .success(try await provider.artwork(for: ids, kind: kind, season: season))) }
+                    catch { return (provider.provider, .failure(error)) }
+                }
+            }
+            for await (provider, result) in group {
+                switch result {
+                case .success(let set): if let set { byProvider[provider] = set }
+                case .failure(let error): failures[provider] = String(describing: error)
+                }
+            }
+        }
+
+        var merged = ArtworkSet(failures: failures)
+        for provider in byProvider.keys.sorted(by: { rank($0) < rank($1) }) {
+            if let set = byProvider[provider] { merged.merge(set) }
+        }
+        return merged
+    }
+
     func assemble(_ snapshots: [Provider: Snapshot], failures: [Provider: String] = [:]) -> TitleMetadata {
         var result = TitleMetadata(failures: failures)
 

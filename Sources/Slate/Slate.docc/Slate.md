@@ -70,6 +70,23 @@ distinguishes a correction from the ordinary case, and
 *stated* from one that was walked. Past the end of a run is left unmapped rather
 than clamped.
 
+### Artwork
+
+A show has forty posters in a dozen languages, and which one is right depends on
+who is looking.
+
+```swift
+let art = await slate.artwork(for: result.ids, kind: .series)
+art.best(.poster, preferring: ["fr", "en"])
+art.best(.backdrop)   // textless, for behind a title
+```
+
+``ArtworkSet/best(_:preferring:)`` holds the rules, and they differ by kind:
+posters and logos follow the viewer's language, while backdrops prefer a
+**textless** image outright — it is the one that can sit behind a title without
+two sets of words fighting each other. ``Artwork/sized(atLeast:)`` asks for the
+width a grid actually needs.
+
 ### Handing off to an acquisition layer
 
 ``TitleMetadata/resolveInput`` is `(imdbID, kind, searchNames)` — the shape a
@@ -117,6 +134,13 @@ A provider that fails is not an error either. It lands in
 - ``FieldKey``
 - ``Identifiers``
 - ``Kind``
+
+### Artwork
+
+- ``ArtworkSet``
+- ``Artwork``
+- ``ArtworkKind``
+- ``ArtworkProvider``
 
 ### Seasons
 

@@ -40,7 +40,8 @@ extension TMDBProvider: SeasonProvider {
                 number: $0.episode_number,
                 title: $0.name?.nilIfEmpty,
                 airDate: $0.air_date?.asReleaseDate,
-                tmdbID: $0.id
+                tmdbID: $0.id,
+                stillURL: $0.still_path.flatMap { URL(string: "\(Self.images)/original\($0)") }
             )
         }
     }
@@ -204,7 +205,7 @@ extension TMDBProvider: SeasonProvider {
         }
     }
 
-    private func showID(for ids: Identifiers) async throws -> Int? {
+    func showID(for ids: Identifiers) async throws -> Int? {
         if let id = ids.tmdb { return id }
         guard let imdb = ids.imdb else { return nil }
         let url = try URL.build(Self.api, path: "/find/\(imdb)", query: ["external_source": "imdb_id"])
@@ -259,6 +260,7 @@ extension TMDBProvider: SeasonProvider {
             let id: Int?
             let name: String?
             let air_date: String?
+            let still_path: String?
             let season_number: Int?
             let episode_number: Int
         }

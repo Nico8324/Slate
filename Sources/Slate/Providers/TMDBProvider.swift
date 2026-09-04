@@ -9,7 +9,7 @@ public actor TMDBProvider: MetadataProvider {
     public nonisolated let provider = Provider.tmdb
 
     static let api = "https://api.themoviedb.org/3"
-    private static let images = "https://image.tmdb.org/t/p/original"
+    static let images = "https://image.tmdb.org/t/p"
 
     private(set) var accessToken: String
     let http: HTTP
@@ -103,8 +103,8 @@ public actor TMDBProvider: MetadataProvider {
             episodeCount: payload.number_of_episodes,
             genres: payload.genres?.map(\.name),
             rating: payload.vote_average,
-            posterURL: payload.poster_path.map { URL(string: Self.images + $0) } ?? nil,
-            backdropURL: payload.backdrop_path.map { URL(string: Self.images + $0) } ?? nil,
+            posterURL: payload.poster_path.map { URL(string: Self.images + "/original" + $0) } ?? nil,
+            backdropURL: payload.backdrop_path.map { URL(string: Self.images + "/original" + $0) } ?? nil,
             // Deliberately silent: TMDB has no anime type, and its `anime`
             // keyword is volunteer-applied. AniList answering is the signal.
             isAnime: nil,

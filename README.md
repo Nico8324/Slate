@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.1.2-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -28,7 +28,9 @@ flowchart LR
     E --> G["Your library<br/>decides human vs machine"]
     F --> H["CinemaResolvers"]
     B -.-> S["SeasonStructure<br/>arcs · absolute ↔ S/E"]
+    B -.-> A2["ArtworkSet<br/>posters · backdrops · logos"]
     S -.-> G
+    A2 -.-> G
 ```
 
 ## 🎬 The trio
@@ -173,6 +175,40 @@ popular one wins.
 > Season logic ported from Cinema's `ShowSeasons`, `ArcSeasons` and
 > `AbsoluteEpisodeMap`, whose thresholds were arrived at against real shows.
 
+## 🖼 Artwork
+
+One poster URL is not an answer either. A show has forty of them, in a dozen
+languages, and which one is right depends on who is looking.
+
+```swift
+let art = await slate.artwork(for: result.ids, kind: .series)
+
+art.best(.poster, preferring: ["fr", "en"])   // a poster they can read
+art.best(.backdrop)                            // textless, for behind a title
+art.best(.logo)                                // TMDB holds these — no Fanart key
+art.posters                                    // the whole list, for a picker
+```
+
+The choosing rules are the domain knowledge, and they are not the same per kind:
+
+| Kind | Rule |
+| :--- | :--- |
+| **Poster · logo** | The viewer's language wins. A title treatment in a script they cannot read is worse than none, so a **textless** image beats one in a language nobody asked for. |
+| **Backdrop · still** | **Textless wins outright** — it is the one that can sit behind a title without two sets of words fighting each other. |
+| Within a tier | the provider's rating, then the larger image. |
+
+TMDB reports `""` for an image with no text on it; Slate reads that as textless
+rather than as a language called empty string. Season posters come from
+`artwork(for:kind:season:)`, and episodes carry their own `stillURL`.
+
+```swift
+poster.sized(atLeast: 342)   // the width the grid needs, not 4 MB
+```
+
+A grid of full-size posters is several megabytes an item, which on a television
+is the difference between a list that scrolls and one that does not. Providers
+serving a single size return it unchanged.
+
 ## 🎯 Handing off
 
 `result.resolveInput` is `(imdbID, kind, searchNames)` — the shape a resolver
@@ -208,7 +244,8 @@ does not get re-argued — the full version lives in [CHANGELOG.md](CHANGELOG.md
 | **Watchmode** | Answers "where can I stream this" — the question this trio exists so nobody has to ask. |
 | **Trakt scrobbling** | A different app's premise; its ratings duplicate MDBList's. |
 | **TheTVDB** | Its episode ordering is the reason to want it — and TMDB's `TVDB Order` episode group already delivers that ordering, on the key we already have. Revisit only for a show where the group is missing or wrong. |
-| **Fanart.tv · MDBList · OMDb** | Each is one more key and one more setup step. Add one when a field is missing that a user *notices*. |
+| **Fanart.tv** | Wanted for logos — and TMDB serves logos, in every language, on the key we already have. Revisit for a title whose logo is missing there. |
+| **MDBList · OMDb** | Each is one more key and one more setup step. Add one when a field is missing that a user *notices*. |
 | ~~**Per-field priority**~~ | **Shipped in 0.1.1.** Two providers turned out to be enough: AniList counts a cour, TMDB counts the series, so `episodeCount` must be TMDB-first while AniList keeps the names. |
 
 The bar for reopening any of these is the same: **name a title the current path
@@ -217,7 +254,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.1.2")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.2.0")
 ```
 
 ```swift

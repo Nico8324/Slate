@@ -19,6 +19,8 @@ public struct Episode: Sendable, Equatable, Identifiable {
     public var title: String?
     public var airDate: Date?
     public var tmdbID: Int?
+    /// The frame a provider uses to illustrate this episode.
+    public var stillURL: URL?
     /// Where the provider files this episode in its *own* numbering, when that
     /// differs from the season structure being presented. Stated by the API,
     /// never inferred — which is what makes the two views translatable.
@@ -28,13 +30,14 @@ public struct Episode: Sendable, Equatable, Identifiable {
 
     public init(
         season: Int, number: Int, title: String? = nil, airDate: Date? = nil,
-        tmdbID: Int? = nil, native: EpisodePosition? = nil
+        tmdbID: Int? = nil, stillURL: URL? = nil, native: EpisodePosition? = nil
     ) {
         self.season = season
         self.number = number
         self.title = title
         self.airDate = airDate
         self.tmdbID = tmdbID
+        self.stillURL = stillURL
         self.native = native
     }
 }
