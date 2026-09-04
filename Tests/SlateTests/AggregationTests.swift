@@ -161,6 +161,18 @@ struct ProviderTests {
         #expect(!"الهجوم على العمالقة".isMostlyLatin)
     }
 
+    @Test func htmlIsStrippedOutOfADescription() {
+        // Untested until now, and the failure mode is silent: a pattern that
+        // stops matching under `.regularExpression` does not throw, it returns
+        // the string unchanged — an inability to answer wearing the costume of
+        // an answer, which is rule 11 in a regex engine. AniList descriptions
+        // arrive as HTML fragments, so this would ship tags into a synopsis.
+        let description = "<i>Frieren</i> is an elf.<br>She outlives everyone."
+
+        #expect(description.strippingHTML == "Frieren is an elf.\nShe outlives everyone.")
+        #expect(!description.strippingHTML.contains("<"))
+    }
+
     @Test func aShortQueryDoesNotMatchAWordBuriedInALongAnimeTitle() {
         // The real failure: searching "Suits" returned *Is This a Zombie? Of the
         // Dead: Yes, This Suits Me Just Fine*, and a legal drama was filed as
