@@ -101,11 +101,20 @@ public protocol MetadataProvider: Sendable {
 }
 
 extension Array where Element == String {
-    /// Names, trimmed, blanks dropped, case-insensitively deduplicated, order
-    /// kept. A resolver that stops at the first name to find anything must not
-    /// be handed the same name twice — for a film whose title and original title
-    /// match, that is every film in its own language.
-    var deduplicatedNames: [String] {
+    /// Names, trimmed, blanks dropped, case-insensitively deduplicated, **order
+    /// kept**.
+    ///
+    /// The contract is the ordering, not the deduplication: a resolver that stops
+    /// at the first name to find anything is choosing by position, so the first
+    /// spelling of a repeated name is the one that survives. A romaji-first list
+    /// stays romaji-first.
+    ///
+    /// Case-insensitive because the destinations are case-insensitive searches —
+    /// `BLEACH` and `Bleach` are one question, not two. A caller that must not be
+    /// handed the same name twice includes anyone who pays per request for it:
+    /// for a film whose title and original title match, which is every film in
+    /// its own language, the naive list contains a duplicate.
+    public var deduplicatedNames: [String] {
         var seen: Set<String> = []
         return compactMap { name in
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

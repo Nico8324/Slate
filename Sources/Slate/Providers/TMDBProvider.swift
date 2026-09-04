@@ -26,6 +26,10 @@ public actor TMDBProvider: MetadataProvider {
     /// ``ArtworkSet/best(_:preferring:)`` chooses.
     let language: String
 
+    /// Hold **one instance for the life of the app**. The request allowance and
+    /// the remembered orderings both live here, so a provider constructed per
+    /// lookup is paced against nothing and remembers nothing.
+    ///
     /// - Parameters:
     ///   - accessToken: a TMDB v4 read access token, sent as a bearer token.
     ///     Sourced by the caller — Slate does not know where it came from.

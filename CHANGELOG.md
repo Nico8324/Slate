@@ -4,6 +4,36 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-09-04
+
+Additive only, so an `upToNextMinor` pin picks it up without a bump.
+
+### Added
+
+- **`[String].deduplicatedNames` is public.** Three implementations of the same
+  primitive existed across the three repositories because nobody could reach this
+  one. The published contract is the **ordering**, not the deduplication: a
+  resolver that stops at the first name to find anything is choosing by position,
+  so the first spelling of a repeated name survives and a romaji-first list stays
+  romaji-first. Case-insensitive, because the destinations are case-insensitive
+  searches — `BLEACH` and `Bleach` are one question.
+
+  A guard at a package's own boundary is *not* made redundant by this. Deduping
+  because the caller was careful is one careless caller away from the bug; this
+  publishes the primitive, not a promise about what arrives.
+
+### Documented
+
+- **One provider instance per app.** The request allowance lives in the provider,
+  and for `AniListProvider` — a struct holding a reference — copies share it while
+  a freshly constructed one gets a new one. `AniListProvider()` per lookup is
+  paced against nothing, and the only symptom is 429s arriving later than they
+  should have. `TMDBProvider` holds the remembered orderings too.
+
+  Nothing in either type signature said this, and a consumer had to work it out
+  from the outside to hold the aggregator statically. Changing it would break a
+  caller without a signature moving.
+
 ## [0.4.0] — 2026-09-04
 
 The fields a library actually writes to a record, which Slate could not supply.
@@ -379,6 +409,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.4.1]: https://github.com/Nico8324/Slate/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Nico8324/Slate/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Nico8324/Slate/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Nico8324/Slate/releases/tag/v0.2.0

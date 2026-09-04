@@ -11,6 +11,13 @@ public struct AniListProvider: MetadataProvider, Sendable {
     private static let endpoint = URL(string: "https://graphql.anilist.co")!
     private let http: HTTP
 
+    /// Hold **one instance for the life of the app**, or copies of one.
+    ///
+    /// The request allowance lives in this instance. Copies share it — it is a
+    /// reference — but a freshly constructed provider gets a new allowance, so
+    /// `AniListProvider()` called per lookup is paced against nothing and the
+    /// only symptom is 429s arriving later than they should have. Nothing in the
+    /// type signature says this, which is why it is written here.
     public init(session: URLSession = .shared) {
         // AniList allows about ninety requests a minute. Staying just inside it
         // is the difference between a library scan finishing and a wall of 429s
