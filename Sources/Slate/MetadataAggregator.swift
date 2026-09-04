@@ -11,9 +11,29 @@ public struct MetadataAggregator: Sendable {
     /// Highest priority first. Providers missing from this list sort last.
     public let priority: [Provider]
 
-    public init(providers: [any MetadataProvider], priority: [Provider] = [.aniList, .tmdb]) {
+    /// Priority for fields where the general order is the wrong answer.
+    ///
+    /// One entry today, and it is not a preference — it is a category error being
+    /// corrected. AniList files a *cour* as an entry: "Attack on Titan" there is
+    /// 25 episodes, because that is season one, while TMDB's show is the whole
+    /// run. Letting AniList win `episodeCount` would answer a question about one
+    /// season as though it were the series, which is exactly the confusion this
+    /// package exists to remove. AniList still wins the names and the anime flag,
+    /// where a cour-level answer is the right one.
+    public let fieldPriority: [FieldKey: [Provider]]
+
+    public static let defaultFieldPriority: [FieldKey: [Provider]] = [
+        .episodeCount: [.tmdb, .aniList]
+    ]
+
+    public init(
+        providers: [any MetadataProvider],
+        priority: [Provider] = [.aniList, .tmdb],
+        fieldPriority: [FieldKey: [Provider]] = MetadataAggregator.defaultFieldPriority
+    ) {
         self.providers = providers
         self.priority = priority
+        self.fieldPriority = fieldPriority
     }
 
     /// Asks every provider concurrently and assembles one answer.
@@ -59,37 +79,52 @@ public struct MetadataAggregator: Sendable {
     }
 
     func assemble(_ snapshots: [Provider: Snapshot], failures: [Provider: String] = [:]) -> TitleMetadata {
-        let ordered = sorted(snapshots)
         var result = TitleMetadata(failures: failures)
 
-        for (provider, snapshot) in ordered {
+        for (_, snapshot) in sorted(snapshots, by: priority) {
             result.ids.fill(from: snapshot.ids)
-            result.kind.append(snapshot.kind, from: provider)
-            result.title.append(snapshot.title, from: provider)
-            result.originalTitle.append(snapshot.originalTitle, from: provider)
-            result.overview.append(snapshot.overview, from: provider)
-            result.releaseDate.append(snapshot.releaseDate, from: provider)
-            result.runtimeMinutes.append(snapshot.runtimeMinutes, from: provider)
-            result.episodeCount.append(snapshot.episodeCount, from: provider)
-            result.genres.append(snapshot.genres, from: provider)
-            result.rating.append(snapshot.rating, from: provider)
-            result.posterURL.append(snapshot.posterURL, from: provider)
-            result.backdropURL.append(snapshot.backdropURL, from: provider)
-            result.isAnime.append(snapshot.isAnime, from: provider)
         }
 
-        result.searchNames = deduplicated(ordered.flatMap(\.1.searchNames))
+        result.kind = field(.kind, snapshots) { $0.kind }
+        result.title = field(.title, snapshots) { $0.title }
+        result.originalTitle = field(.originalTitle, snapshots) { $0.originalTitle }
+        result.overview = field(.overview, snapshots) { $0.overview }
+        result.releaseDate = field(.releaseDate, snapshots) { $0.releaseDate }
+        result.runtimeMinutes = field(.runtimeMinutes, snapshots) { $0.runtimeMinutes }
+        result.episodeCount = field(.episodeCount, snapshots) { $0.episodeCount }
+        result.genres = field(.genres, snapshots) { $0.genres }
+        result.rating = field(.rating, snapshots) { $0.rating }
+        result.posterURL = field(.posterURL, snapshots) { $0.posterURL }
+        result.backdropURL = field(.backdropURL, snapshots) { $0.backdropURL }
+        result.isAnime = field(.isAnime, snapshots) { $0.isAnime }
+
+        result.searchNames = deduplicated(sorted(snapshots, by: priority).flatMap(\.1.searchNames))
         return result
     }
 
-    private func sorted(_ snapshots: [Provider: Snapshot]) -> [(Provider, Snapshot)] {
+    /// One field, ordered by that field's own priority where it has one.
+    private func field<Value>(
+        _ key: FieldKey,
+        _ snapshots: [Provider: Snapshot],
+        _ value: (Snapshot) -> Value?
+    ) -> Field<Value> {
+        var result = Field<Value>()
+        for (provider, snapshot) in sorted(snapshots, by: fieldPriority[key] ?? priority) {
+            result.append(value(snapshot), from: provider)
+        }
+        return result
+    }
+
+    private func sorted(_ snapshots: [Provider: Snapshot], by order: [Provider]) -> [(Provider, Snapshot)] {
         snapshots.sorted { lhs, rhs in
-            rank(lhs.key) < rank(rhs.key)
+            rank(lhs.key, in: order) < rank(rhs.key, in: order)
         }
     }
 
-    func rank(_ provider: Provider) -> Int {
-        priority.firstIndex(of: provider) ?? priority.count
+    func rank(_ provider: Provider) -> Int { rank(provider, in: priority) }
+
+    private func rank(_ provider: Provider, in order: [Provider]) -> Int {
+        order.firstIndex(of: provider) ?? order.count
     }
 
     /// Case- and whitespace-insensitive, first occurrence wins.

@@ -4,6 +4,25 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-09-04
+
+### Fixed
+
+- **`episodeCount` no longer answers with one season's length.** AniList files a
+  *cour* as an entry: its "Attack on Titan" is 25 episodes, because that is
+  season one, while TMDB's show is the whole run. With AniList winning every
+  field, a series-level question got a season-level answer — a category error, not
+  a preference. `episodeCount` is now TMDB-first, while AniList keeps the names,
+  the anime flag and everything else a cour-level answer is right for. The cour
+  count is still there under `value(from: .aniList)`.
+
+### Added
+
+- **`MetadataAggregator.fieldPriority`.** Per-field provider order, which the
+  0.1.0 notes said would arrive when a third provider made the table non-empty.
+  It turned out two were enough. Defaults to the one entry above; pass your own
+  to override.
+
 ## [0.1.0] — 2026-09-04
 
 Television has seasons and episodes. 0.0.1 answered "366 episodes" for Bleach and
@@ -156,5 +175,6 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.1.1]: https://github.com/Nico8324/Slate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Nico8324/Slate/releases/tag/v0.1.0
 [0.0.1]: https://github.com/Nico8324/Slate/releases/tag/v0.0.1

@@ -59,6 +59,27 @@ struct AggregationTests {
         #expect(result.searchNames == ["Shingeki no Kyojin", "Attack on Titan", "進撃の巨人"])
     }
 
+    @Test func episodeCountComesFromTheProviderThatCountsTheWholeSeries() {
+        // AniList files a cour as an entry: its "Attack on Titan" is 25 episodes
+        // because that is season one. TMDB's show is the whole run. Answering a
+        // question about one season as though it were the series is the exact
+        // confusion this package exists to remove.
+        let anilistCour = Snapshot(kind: .series, title: "Shingeki no Kyojin",
+                                   episodeCount: 25, isAnime: true)
+        let tmdbSeries = Snapshot(ids: Identifiers(imdb: "tt2560140", tmdb: 1429),
+                                  kind: .series, title: "Attack on Titan", episodeCount: 89)
+
+        let result = aggregator.assemble([.aniList: anilistCour, .tmdb: tmdbSeries])
+
+        #expect(result.episodeCount.best == 89)
+        #expect(result.provenance[.episodeCount] == .tmdb)
+        // ...while AniList still wins the things a cour-level answer is right for.
+        #expect(result.title.best == "Shingeki no Kyojin")
+        #expect(result.isAnime.best == true)
+        // And the cour count is not lost, just not the verdict.
+        #expect(result.episodeCount.value(from: .aniList) == 25)
+    }
+
     @Test func priorityIsConfigurable() {
         let tmdbFirst = MetadataAggregator(providers: [], priority: [.tmdb, .aniList])
         let result = tmdbFirst.assemble([.tmdb: tmdbSnapshot, .aniList: aniListSnapshot])

@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -195,7 +195,7 @@ does not get re-argued — the full version lives in [CHANGELOG.md](CHANGELOG.md
 | **Trakt scrobbling** | A different app's premise; its ratings duplicate MDBList's. |
 | **TheTVDB** | Its episode ordering is the reason to want it — and TMDB's `TVDB Order` episode group already delivers that ordering, on the key we already have. Revisit only for a show where the group is missing or wrong. |
 | **Fanart.tv · MDBList · OMDb** | Each is one more key and one more setup step. Add one when a field is missing that a user *notices*. |
-| **Per-field priority** | Genuinely per-field domain knowledge — but with two providers the table is empty. When a third lands, `priority` becomes `[FieldKey: [Provider]]` and no caller changes. |
+| ~~**Per-field priority**~~ | **Shipped in 0.1.1.** Two providers turned out to be enough: AniList counts a cour, TMDB counts the series, so `episodeCount` must be TMDB-first while AniList keeps the names. |
 
 The bar for reopening any of these is the same: **name a title the current path
 gets wrong.**
@@ -203,7 +203,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.1.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.1.1")
 ```
 
 ```swift
