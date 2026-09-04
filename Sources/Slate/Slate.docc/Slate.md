@@ -98,6 +98,25 @@ group names a file. The id is not always a bridge, and for Japanese titles that
 mapping often does not exist at all — which is the whole reason ``AniListProvider``
 is in the first cut.
 
+### A whole library at once
+
+```swift
+let results = await slate.metadata(for: lookups)   // in order, bounded concurrency
+```
+
+Requests are paced and retried. AniList allows about ninety a minute, and a
+corrected show costs three TMDB requests with a fourth for artwork — so a few
+hundred titles is well over a thousand requests, and unpaced that arrives as a
+wall of 429s that reads as the provider being down. A 429 or 5xx waits the
+`Retry-After` the server gave; a 401 is not retried, because an expired
+credential will not fix itself. ``SlateError/rateLimited(retryAfter:)`` is
+separate from ``SlateError/http(status:body:)`` so "slow down" can be told from
+"this will never work".
+
+``TMDBProvider/init(accessToken:language:session:)`` selects the metadata
+language. Artwork is deliberately unaffected: every language is fetched and
+``ArtworkSet/best(_:preferring:)`` chooses.
+
 ### Credentials
 
 Slate holds none. ``TMDBProvider`` is constructed with a key it does not source
@@ -160,6 +179,10 @@ A provider that fails is not an error either. It lands in
 - ``Snapshot``
 - ``TMDBProvider``
 - ``AniListProvider``
+
+### Scanning
+
+- ``MetadataAggregator/metadata(for:maxConcurrent:)``
 
 ### Errors
 
