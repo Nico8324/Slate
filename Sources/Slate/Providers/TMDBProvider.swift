@@ -21,11 +21,22 @@ public actor TMDBProvider: MetadataProvider {
     /// single time.
     var seasonCache: [Int: SeasonStructure?] = [:]
 
-    /// - Parameter accessToken: a TMDB v4 read access token, sent as a bearer
-    ///   token. Sourced by the caller — Slate does not know where it came from.
-    public init(accessToken: String, session: URLSession = .shared) {
+    /// The language metadata comes back in, as TMDB spells it: `fr-FR`, `ja-JP`.
+    /// Artwork is deliberately unaffected — every language is fetched and
+    /// ``ArtworkSet/best(_:preferring:)`` chooses.
+    let language: String
+
+    /// - Parameters:
+    ///   - accessToken: a TMDB v4 read access token, sent as a bearer token.
+    ///     Sourced by the caller — Slate does not know where it came from.
+    ///   - language: an IETF tag TMDB understands. Titles and overviews come
+    ///     back in it where the community has supplied them.
+    public init(accessToken: String, language: String = "en-US", session: URLSession = .shared) {
         self.accessToken = accessToken
-        self.http = HTTP(session: session)
+        self.language = language
+        // TMDB is generous, but a library scan is thousands of requests and
+        // there is no reason to be the loudest client on the server.
+        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 20))
     }
 
     /// Rotate the token in place. Slate never persists it.
@@ -57,7 +68,8 @@ public actor TMDBProvider: MetadataProvider {
     // MARK: - Endpoints
 
     private func find(imdb: String) async throws -> (id: Int, kind: Kind)? {
-        let url = try URL.build(Self.api, path: "/find/\(imdb)", query: ["external_source": "imdb_id"])
+        let url = try URL.build(Self.api, path: "/find/\(imdb)",
+                                query: ["external_source": "imdb_id", "language": language])
         let response = try await http.json(FindResponse.self, url: url, headers: headers)
         if let movie = response.movie_results.first { return (movie.id, .movie) }
         if let show = response.tv_results.first { return (show.id, .series) }
@@ -68,16 +80,19 @@ public actor TMDBProvider: MetadataProvider {
         switch kind {
         case .movie:
             let url = try URL.build(Self.api, path: "/search/movie",
-                                    query: ["query": query, "year": year.map(String.init)])
+                                    query: ["query": query, "year": year.map(String.init),
+                                            "language": language])
             let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
             return Self.best(of: results, matching: query).map { ($0.id, .movie) }
         case .series:
             let url = try URL.build(Self.api, path: "/search/tv",
-                                    query: ["query": query, "first_air_date_year": year.map(String.init)])
+                                    query: ["query": query, "first_air_date_year": year.map(String.init),
+                                            "language": language])
             let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
             return Self.best(of: results, matching: query).map { ($0.id, .series) }
         case nil:
-            let url = try URL.build(Self.api, path: "/search/multi", query: ["query": query])
+            let url = try URL.build(Self.api, path: "/search/multi",
+                                    query: ["query": query, "language": language])
             let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
             guard let hit = results.first(where: { $0.media_type == "movie" || $0.media_type == "tv" }) else { return nil }
             return (hit.id, hit.media_type == "movie" ? .movie : .series)
@@ -86,7 +101,8 @@ public actor TMDBProvider: MetadataProvider {
 
     private func details(id: Int, kind: Kind) async throws -> Snapshot {
         let path = kind == .movie ? "/movie/\(id)" : "/tv/\(id)"
-        let url = try URL.build(Self.api, path: path, query: ["append_to_response": "external_ids"])
+        let url = try URL.build(Self.api, path: path,
+                                query: ["append_to_response": "external_ids", "language": language])
         let payload = try await http.json(Details.self, url: url, headers: headers)
 
         let title = payload.title ?? payload.name
@@ -108,7 +124,7 @@ public actor TMDBProvider: MetadataProvider {
             // Deliberately silent: TMDB has no anime type, and its `anime`
             // keyword is volunteer-applied. AniList answering is the signal.
             isAnime: nil,
-            searchNames: [title, originalTitle].compactMap { $0?.nilIfEmpty }
+            searchNames: [title, originalTitle].compactMap { $0?.nilIfEmpty }.deduplicatedNames
         )
     }
 
@@ -135,7 +151,7 @@ public actor TMDBProvider: MetadataProvider {
 
     // MARK: - Payloads
 
-    private struct FindResponse: Decodable {
+    struct FindResponse: Decodable {
         var movie_results: [SearchHit] = []
         var tv_results: [SearchHit] = []
     }

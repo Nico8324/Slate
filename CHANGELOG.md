@@ -4,6 +4,55 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-09-04
+
+The things that stop it working on a whole library rather than on the fourteen
+titles that were checked by hand.
+
+### Added
+
+- **Pacing.** `RateLimiter` hands out turns in order, so a burst is spread rather
+  than dropped: AniList allows about ninety requests a minute, and a corrected
+  show costs three TMDB requests with a fourth for artwork. Scanning a few
+  hundred titles is well over a thousand requests, and unpaced that arrives as a
+  wall of 429s that reads as the provider being down.
+- **Retries that respect the server.** 429 and 5xx are retried up to three tries
+  total, waiting the `Retry-After` the server gave — it knows when its window
+  resets, and guessing shorter just burns the next attempt. Capped at thirty
+  seconds, because waiting minutes inside one lookup is worse than reporting it.
+  A 401 is not retried: an expired credential will not fix itself.
+  `SlateError.rateLimited` is distinct from `.http` so "slow down" can be told
+  from "this will never work".
+- **`metadata(for: [Lookup])`.** A whole library, in the order asked, with
+  bounded concurrency. Three hundred titles started at once is a thousand
+  requests in flight, which the providers answer with 429s whatever the rate
+  limiter would have preferred.
+- **A metadata language.** `TMDBProvider(accessToken:language:)` — titles and
+  overviews in `fr-FR` or `ja-JP` where the community supplied them. Artwork is
+  deliberately unaffected: every language is fetched and
+  `ArtworkSet.best(_:preferring:)` chooses.
+
+### Fixed
+
+- **Film artwork returned nothing when the film arrived by IMDb id.** It required
+  a TMDB id outright, while the television path had been looking one up all
+  along. Found by testing films for the first time.
+- **A film's search names contained the same name twice** whenever its title and
+  original title matched — which is every film in its own language. The
+  aggregator deduplicated, so this was invisible until a provider was tested on
+  its own; `NyaaResolver` stops at the first name that finds anything, and would
+  have asked the same question twice. Deduplication now happens where the names
+  are made.
+
+### Testing
+
+**Every TMDB request path can now be tested without a credential.** `StubURLProtocol`
+answers from canned responses, so search, find, details, episode groups and
+artwork are exercised in CI rather than by hand in a terminal. Films had never
+been run at all — both bugs above came from the first test that tried one. There
+are also tests asserting the token never appears in a URL, that an ordering is
+fetched once and remembered, and that a 429 is retried while a 401 is not.
+
 ## [0.2.0] — 2026-09-04
 
 Artwork, on the same principle as the rest: one URL is not an answer when a show
@@ -295,6 +344,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.3.0]: https://github.com/Nico8324/Slate/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Nico8324/Slate/releases/tag/v0.2.0
 [0.1.2]: https://github.com/Nico8324/Slate/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Nico8324/Slate/releases/tag/v0.1.1

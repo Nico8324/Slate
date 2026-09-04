@@ -78,6 +78,35 @@ public struct MetadataAggregator: Sendable {
         return nil
     }
 
+    /// A whole library, paced.
+    ///
+    /// Results come back in the order asked. Concurrency is bounded because a
+    /// scan is the case that breaks things: three hundred titles started at once
+    /// is a thousand requests in flight, and the providers answer that with 429s
+    /// whatever the rate limiter would have preferred.
+    public func metadata(for lookups: [Lookup], maxConcurrent: Int = 4) async -> [TitleMetadata] {
+        guard !lookups.isEmpty else { return [] }
+        var results = [TitleMetadata?](repeating: nil, count: lookups.count)
+
+        await withTaskGroup(of: (Int, TitleMetadata).self) { group in
+            var next = 0
+            for _ in 0..<min(max(maxConcurrent, 1), lookups.count) {
+                let index = next
+                group.addTask { (index, await self.metadata(for: lookups[index])) }
+                next += 1
+            }
+            while let (index, result) = await group.next() {
+                results[index] = result
+                if next < lookups.count {
+                    let index = next
+                    group.addTask { (index, await self.metadata(for: lookups[index])) }
+                    next += 1
+                }
+            }
+        }
+        return results.map { $0 ?? TitleMetadata() }
+    }
+
     /// Every image every provider holds, merged in ``priority`` order.
     ///
     /// Never throws: a provider that fails lands in ``ArtworkSet/failures`` and
@@ -136,7 +165,7 @@ public struct MetadataAggregator: Sendable {
         result.backdropURL = field(.backdropURL, snapshots) { $0.backdropURL }
         result.isAnime = field(.isAnime, snapshots) { $0.isAnime }
 
-        result.searchNames = deduplicated(sorted(snapshots, by: priority).flatMap(\.1.searchNames))
+        result.searchNames = sorted(snapshots, by: priority).flatMap(\.1.searchNames).deduplicatedNames
         return result
     }
 
@@ -163,15 +192,5 @@ public struct MetadataAggregator: Sendable {
 
     private func rank(_ provider: Provider, in order: [Provider]) -> Int {
         order.firstIndex(of: provider) ?? order.count
-    }
-
-    /// Case- and whitespace-insensitive, first occurrence wins.
-    private func deduplicated(_ names: [String]) -> [String] {
-        var seen: Set<String> = []
-        return names.compactMap { name in
-            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { return nil }
-            return trimmed
-        }
     }
 }

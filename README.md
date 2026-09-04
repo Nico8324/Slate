@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -220,6 +220,20 @@ A grid of full-size posters is several megabytes an item, which on a television
 is the difference between a list that scrolls and one that does not. Providers
 serving a single size return it unchanged.
 
+## 📚 A whole library
+
+```swift
+let results = await slate.metadata(for: lookups)   // in order, bounded concurrency
+let french  = TMDBProvider(accessToken: token, language: "fr-FR")
+```
+
+Requests are paced and retried. AniList allows about ninety a minute; a corrected
+show costs three TMDB requests and a fourth for artwork, so a few hundred titles
+is well over a thousand requests — unpaced, that arrives as a wall of 429s that
+reads as the provider being down. A 429 or 5xx is retried up to three tries,
+waiting the `Retry-After` the server gave. A 401 is not retried: an expired
+credential will not fix itself.
+
 ## 🎯 Handing off
 
 `result.resolveInput` is `(imdbID, kind, searchNames)` — the shape a resolver
@@ -265,7 +279,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.2.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.3.0")
 ```
 
 ```swift
@@ -285,5 +299,8 @@ gets wrong.**
 - **No SwiftData, no UI, no `@MainActor` in the API surface.** Mapping these DTOs
   onto persistent models is the app's job and stays there.
 - **No dependencies.** `Foundation` and `URLSession`, nothing else.
+- **Testable without a credential.** A `URLProtocol` stub exercises every TMDB
+  request path in CI, so the parts that need a key are not the parts nobody
+  checks.
 - **A provider may not rank itself, merge, or guess.** It answers with a
   `Snapshot` of flat optionals; the aggregator does the rest.

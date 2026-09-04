@@ -15,7 +15,10 @@ extension TMDBProvider: ArtworkProvider {
         let path: String
         switch (kind, nativeSeason) {
         case (.movie, _):
-            guard let id = ids.tmdb else { return nil }
+            // Not `ids.tmdb` alone: a film that arrived by IMDb id had no TMDB
+            // id yet, and this returned nothing rather than looking it up — the
+            // television path had done the lookup all along.
+            guard let id = try await movieID(for: ids) else { return nil }
             path = "/movie/\(id)/images"
         case (.series, let nativeSeason?):
             guard let id = try await showID(for: ids) else { return nil }

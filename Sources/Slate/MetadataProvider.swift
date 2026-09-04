@@ -87,3 +87,18 @@ public protocol MetadataProvider: Sendable {
     /// for every western title.
     func snapshot(for lookup: Lookup) async throws -> Snapshot?
 }
+
+extension Array where Element == String {
+    /// Names, trimmed, blanks dropped, case-insensitively deduplicated, order
+    /// kept. A resolver that stops at the first name to find anything must not
+    /// be handed the same name twice — for a film whose title and original title
+    /// match, that is every film in its own language.
+    var deduplicatedNames: [String] {
+        var seen: Set<String> = []
+        return compactMap { name in
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { return nil }
+            return trimmed
+        }
+    }
+}

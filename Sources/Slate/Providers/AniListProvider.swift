@@ -12,7 +12,10 @@ public struct AniListProvider: MetadataProvider, Sendable {
     private let http: HTTP
 
     public init(session: URLSession = .shared) {
-        self.http = HTTP(session: session)
+        // AniList allows about ninety requests a minute. Staying just inside it
+        // is the difference between a library scan finishing and a wall of 429s
+        // that reads as the provider being down.
+        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 1.4))
     }
 
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
@@ -81,7 +84,7 @@ public struct AniListProvider: MetadataProvider, Sendable {
             posterURL: media.coverImage?.extraLarge.flatMap(URL.init(string:)),
             backdropURL: media.bannerImage.flatMap(URL.init(string:)),
             isAnime: true,
-            searchNames: media.allNames
+            searchNames: media.allNames.deduplicatedNames
         )
     }
 
