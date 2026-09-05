@@ -75,3 +75,26 @@ extension TMDBProvider: ArtworkProvider {
         var logos: [Item]?
     }
 }
+
+extension AniListProvider: ArtworkProvider {
+    /// AniList's cover, which is the image anime viewers recognise — TMDB
+    /// frequently holds a different one, or a poster for the wrong cour.
+    ///
+    /// No language or rating on either image, so there is nothing here to choose
+    /// between; they join the set and ``ArtworkSet/best(_:preferring:)`` ranks
+    /// them below anything TMDB can describe.
+    ///
+    /// - Parameter nativeSeason: AniList files each cour as its own entry and
+    ///   holds no season-level art, so anything but `nil` returns `nil` rather
+    ///   than a title-level image standing in for a season's.
+    public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
+        guard nativeSeason == nil, let id = ids.aniList else { return nil }
+        guard let snapshot = try await snapshot(for: Lookup(ids: Identifiers(aniList: id))) else {
+            return nil
+        }
+        return ArtworkSet(
+            posters: snapshot.posterURL.map { [Artwork(kind: .poster, url: $0, provider: .aniList)] } ?? [],
+            backdrops: snapshot.backdropURL.map { [Artwork(kind: .backdrop, url: $0, provider: .aniList)] } ?? []
+        )
+    }
+}
