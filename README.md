@@ -312,24 +312,27 @@ Keys travel as `Authorization: Bearer`, **never** in a query string.
 
 ## 🚫 Deliberately not here
 
-Each was considered on evidence and rejected. The reasoning is recorded so it
-does not get re-argued — the full version lives in [CHANGELOG.md](CHANGELOG.md).
+The plan this was built from named nine providers. Three of them turned out to
+need no credential of their own, and two were answered by a provider already
+present — so the count that matters is not how many sites are read but how many
+keys a person has to go and get. That number is **two, one of them optional.**
 
 | Not shipped | Why |
 | :--- | :--- |
-| **AniDB** | Fansub-accurate episode numbering and specials — the one gap `TVDB Order` does not close. Still out because it is rate-limited and licence-encumbered, and an embedded client id in a public repo is a ban waiting to happen. This is the **most likely next provider**, not a permanent no. |
-| **manami** | Bridges to neither IMDb nor TMDB. Tens of megabytes for ids nothing reads. |
-| **Fribb / anime-lists** | *Does* carry the bridge, plus `episode_offset`. But 7.5 MB, and the mapping is many-to-one in the direction we would query — an IMDb id resolves to a **set**, so it still needs the disambiguation that name search does today. |
-| **Watchmode** | Answers "where can I stream this" — the question this trio exists so nobody has to ask. |
-| **Trakt scrobbling** | A different app's premise; its ratings duplicate MDBList's. |
-| **TheTVDB** | Its episode ordering is the reason to want it — and TMDB's `TVDB Order` episode group already delivers that ordering, on the key we already have. Revisit only for a show where the group is missing or wrong. |
-| **Fanart.tv** | Wanted for logos — and TMDB serves logos, in every language, on the key we already have. Revisit for a title whose logo is missing there. |
-| ~~**MDBList**~~ | **Shipped in 0.6.0.** One key cross-references six sites, which is what OMDb and Trakt were each going to do separately. |
-| **OMDb · Trakt** | Both are now redundant: MDBList already returns what they were wanted for. |
-| ~~**Per-field priority**~~ | **Shipped in 0.1.1.** Two providers turned out to be enough: AniList counts a cour, TMDB counts the series, so `episodeCount` must be TMDB-first while AniList keeps the names. |
+| **AniDB** | Fansub-accurate episode numbering and specials — the one gap nothing else closes. Out because it is rate-limited, licence-encumbered, and an embedded client id in a public repository is a ban waiting to happen. The **most likely next provider**, not a permanent no. |
+| **TheTVDB** | Its episode ordering is the whole reason to want it, and TMDB's `TVDB Order` episode group delivers exactly that ordering on the key already in hand. Revisit for a show where the group is missing or wrong. |
+| **Fanart.tv** | Wanted for logos. TMDB serves logos in every language on the same key. |
+| **Watchmode** | Wanted for availability. TMDB's watch providers cover it, region by region, on the same key. |
+| **OMDb · Trakt ratings** | Redundant since 0.6.0: MDBList returns what both were wanted for, in one call. |
+| **Trakt scrobbling** | Not metadata. It is a record of what a person watched, which belongs to the app that watched it. |
+| **manami** | Bridges to neither IMDb nor TMDB — the one direction an anime library needs. Tens of megabytes for ids nothing can reach. |
+| **AnimeSchedule · TVmaze** | Wanted for air dates. TMDB's next/last episode and AniList's next airing episode already answer it. |
 
-The bar for reopening any of these is the same: **name a title the current path
-gets wrong.**
+Shipped since the table was first written: **MDBList** (0.6.0), **availability**
+(0.7.0), the **Fribb id bridge** (0.8.0), **relations and voice actors** (0.9.0).
+
+The bar for reopening any row is the same: **name a title the current path gets
+wrong.**
 
 ## 📦 Installation
 
