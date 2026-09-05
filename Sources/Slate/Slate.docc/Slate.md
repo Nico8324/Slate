@@ -204,6 +204,7 @@ A provider that fails is not an error either. It lands in
 - ``TMDBProvider``
 - ``AniListProvider``
 - ``MDBListProvider``
+- ``AnimeIDBridge``
 - ``Rating``
 - ``CastMember``
 - ``WatchOption``

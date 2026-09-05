@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -107,6 +107,7 @@ Thirteen hand-written branches drift apart. A loop does not.
 | **TMDB** | v4 read token | The IMDb id · western movies & TV · seasons · art · cast · trailer |
 | **AniList** | **none** | Anime detection · romaji & native names · episode counts |
 | **MDBList** | api key, optional | IMDb · Metacritic · both tomatometers · Letterboxd · Trakt · MyAnimeList |
+| **Fribb bridge** | **none** | Broadcast ids → AniList · MyAnimeList · AniDB ids |
 
 **Two deliberate silences.** TMDB reports `isAnime` as `nil`, never `false` — it
 has no anime type and its `anime` keyword is volunteer-applied, so AniList
@@ -213,6 +214,27 @@ Bleach's arc season 2 lives inside TMDB's season 1, so passing `2` straight
 through returns Thousand-Year Blood War's posters — a real picture of the wrong
 thing, with nothing to indicate it.
 
+## 🔗 The two id systems
+
+Anime lives under two numbering systems that do not meet: TMDB and IMDb number
+the **broadcast**, while AniList, MAL and AniDB number the **work**. Nothing in
+either bridges to the other, which is why finding anime by name is otherwise the
+only route — and why an unusual romanisation can be found by neither.
+
+```swift
+AnimeIDBridge()   // no credential; the published cross-map, fetched once
+```
+
+Each round of a lookup can unlock the next: TMDB finds the IMDb id, the bridge
+turns it into a MyAnimeList id, and MDBList can then be asked for MyAnimeList's
+score. Bounded at two extra rounds, and it stops the moment a round learns
+nothing.
+
+**It refuses rather than guesses.** The mapping is many-to-one in the direction
+this queries — *3x3 Eyes* and its sequel share one IMDb id — so a shared id
+returns `nil` unless a season number narrows it. Picking the first match would
+file a sequel's ids onto the original, and nothing downstream would notice.
+
 ## 📡 One request, eight answers
 
 TMDB's `append_to_response` returns availability, keywords, studios, franchise,
@@ -294,7 +316,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.7.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.8.0")
 ```
 
 ```swift
@@ -314,6 +336,9 @@ gets wrong.**
 - **No SwiftData, no UI, no `@MainActor` in the API surface.** Mapping these DTOs
   onto persistent models is the app's job and stays there.
 - **No dependencies.** `Foundation` and `URLSession`, nothing else.
+- **Responses are remembered for the life of the process**, never written to
+  disk. Staleness is then bounded by how long the app runs, which needs no
+  eviction policy and cannot be wrong after a restart.
 - **Hold one provider instance for the life of the app.** The request allowance
   lives there, so a provider constructed per lookup is paced against nothing —
   and the only symptom is 429s arriving later than they should have.

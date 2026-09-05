@@ -7,12 +7,19 @@ public struct Lookup: Sendable, Hashable {
     public var query: String?
     public var year: Int?
     public var kind: Kind?
+    /// Narrows a lookup to one season, where a provider can use it. Anime ids
+    /// need it: two works routinely share one broadcast id.
+    public var season: Int?
 
-    public init(ids: Identifiers = .init(), query: String? = nil, year: Int? = nil, kind: Kind? = nil) {
+    public init(
+        ids: Identifiers = .init(), query: String? = nil, year: Int? = nil,
+        kind: Kind? = nil, season: Int? = nil
+    ) {
         self.ids = ids
         self.query = query
         self.year = year
         self.kind = kind
+        self.season = season
     }
 
     /// The id path. Note that AniList cannot answer this one: no id bridge to

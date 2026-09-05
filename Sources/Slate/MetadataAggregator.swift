@@ -44,24 +44,35 @@ public struct MetadataAggregator: Sendable {
     public func metadata(for lookup: Lookup) async -> TitleMetadata {
         var (snapshots, failures) = await ask(providers, lookup)
         var result = assemble(snapshots, failures: failures)
+        var asked = lookup
 
-        // Second pass, once. A provider that resolves only by id cannot answer a
-        // lookup by name — MDBList has no title search — so it stays silent
-        // until another provider supplies one. Asking again with the ids now
-        // known is the difference between such a provider working and never
-        // firing on the main path at all.
-        let silent = providers.filter { snapshots[$0.provider] == nil && failures[$0.provider] == nil }
-        var enriched = lookup
-        enriched.ids.fill(from: result.ids)
-        guard !silent.isEmpty, enriched.ids != lookup.ids else { return result }
+        // Providers that resolve only by id cannot answer a lookup by name —
+        // MDBList has no title search, and the anime id bridge has no titles at
+        // all — so they stay silent until another provider supplies an id. Each
+        // round can unlock the next: TMDB finds the IMDb id, the bridge turns it
+        // into a MyAnimeList id, and MDBList can then be asked for MyAnimeList's
+        // score. Bounded, and it stops the moment a round learns nothing.
+        for _ in 0..<Self.resolutionRounds {
+            let silent = providers.filter {
+                snapshots[$0.provider] == nil && failures[$0.provider] == nil
+            }
+            var next = asked
+            next.ids.fill(from: result.ids)
+            guard !silent.isEmpty, next.ids != asked.ids else { break }
+            asked = next
 
-        let (late, lateFailures) = await ask(silent, enriched)
-        guard !late.isEmpty || !lateFailures.isEmpty else { return result }
-        snapshots.merge(late) { first, _ in first }
-        failures.merge(lateFailures) { first, _ in first }
-        result = assemble(snapshots, failures: failures)
+            let (late, lateFailures) = await ask(silent, asked)
+            guard !late.isEmpty || !lateFailures.isEmpty else { break }
+            snapshots.merge(late) { first, _ in first }
+            failures.merge(lateFailures) { first, _ in first }
+            result = assemble(snapshots, failures: failures)
+        }
         return result
     }
+
+    /// Two extra rounds: enough for id → bridge → id-only provider, and few
+    /// enough that a misbehaving provider cannot turn one lookup into a loop.
+    static let resolutionRounds = 2
 
     private func ask(
         _ providers: [any MetadataProvider], _ lookup: Lookup

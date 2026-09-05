@@ -37,11 +37,43 @@ actor RateLimiter {
     }
 }
 
+/// Remembers responses for the life of the process.
+///
+/// A show page opened twice is two identical requests, and a library scan asks
+/// for the same franchise, the same season and the same id bridge repeatedly.
+/// In memory only and never written to disk: staleness is then bounded by how
+/// long the app runs, which needs no policy and cannot be wrong after a restart.
+actor ResponseCache {
+    private var entries: [String: Data] = [:]
+    private var order: [String] = []
+    private let limit: Int
+
+    init(limit: Int = 256) { self.limit = limit }
+
+    func data(for key: String) -> Data? { entries[key] }
+
+    func store(_ data: Data, for key: String) {
+        if entries.updateValue(data, forKey: key) == nil { order.append(key) }
+        // Oldest out first. A metadata cache has no hot set worth tracking —
+        // the request that matters is the one a person just made.
+        while order.count > limit, let oldest = order.first {
+            order.removeFirst()
+            entries.removeValue(forKey: oldest)
+        }
+    }
+
+    func removeAll() {
+        entries.removeAll()
+        order.removeAll()
+    }
+}
+
 /// The smallest thing that can fetch and decode JSON, plus the two things every
 /// caller would otherwise have to reinvent: pacing and retries.
 struct HTTP: Sendable {
     var session: URLSession = .shared
     var limiter: RateLimiter?
+    var cache: ResponseCache?
     /// Total tries, not retries. Three is enough for a transient 429 or a 502
     /// and short enough that a genuinely broken provider fails quickly.
     var attempts: Int = 3
@@ -59,6 +91,13 @@ struct HTTP: Sendable {
         for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
         if body != nil, headers["Content-Type"] == nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+
+        // Keyed by method, URL and body: AniList is a POST whose URL never
+        // changes, so the URL alone would collapse every query into one entry.
+        let key = "\(method) \(url.absoluteString) \(body?.hashValue ?? 0)"
+        if let cached = await cache?.data(for: key) {
+            return try JSONDecoder().decode(Response.self, from: cached)
         }
 
         var lastRetryAfter: TimeInterval?
@@ -83,7 +122,12 @@ struct HTTP: Sendable {
                 throw SlateError.http(status: http.statusCode,
                                       body: String(decoding: data.prefix(512), as: UTF8.self))
             }
-            return try JSONDecoder().decode(Response.self, from: data)
+            let decoded = try JSONDecoder().decode(Response.self, from: data)
+            // Stored only after decoding: a body that does not parse is not an
+            // answer, and caching it would repeat the failure without the round
+            // trip that might have fixed it.
+            await cache?.store(data, for: key)
+            return decoded
         }
         throw SlateError.rateLimited(retryAfter: lastRetryAfter)
     }

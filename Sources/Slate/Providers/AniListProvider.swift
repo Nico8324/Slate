@@ -22,7 +22,8 @@ public struct AniListProvider: MetadataProvider, Sendable {
         // AniList allows about ninety requests a minute. Staying just inside it
         // is the difference between a library scan finishing and a wall of 429s
         // that reads as the provider being down.
-        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 1.4))
+        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 1.4),
+                         cache: ResponseCache())
     }
 
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {

@@ -10,6 +10,9 @@ public enum Provider: String, Sendable, Hashable {
     /// Cross-referenced scores — IMDb, Metacritic, the tomatometer, Letterboxd,
     /// MyAnimeList — which no single provider holds.
     case mdbList
+    /// The published cross-map between broadcast ids and anime ids. Supplies no
+    /// metadata — it exists to make other providers reachable.
+    case fribb
 }
 
 /// A single value, and the provider that supplied it.

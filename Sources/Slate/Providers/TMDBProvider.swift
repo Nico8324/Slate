@@ -49,7 +49,8 @@ public actor TMDBProvider: MetadataProvider {
         self.region = region
         // TMDB is generous, but a library scan is thousands of requests and
         // there is no reason to be the loudest client on the server.
-        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 20))
+        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 20),
+                         cache: ResponseCache())
     }
 
     /// Rotate the token in place. Slate never persists it.

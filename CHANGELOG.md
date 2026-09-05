@@ -4,6 +4,39 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-09-05
+
+The id bridge, and a cache.
+
+### Added
+
+- **`AnimeIDBridge`.** Anime lives under two numbering systems that do not meet:
+  TMDB and IMDb number the broadcast, AniList, MAL and AniDB number the work.
+  The published Fribb cross-map is fetched once, projected down to id pairs, and
+  the rest of the 7.5 MB discarded. **No credential.**
+- **Chained resolution.** Each round of a lookup can unlock the next — TMDB finds
+  the IMDb id, the bridge turns it into a MyAnimeList id, MDBList can then be
+  asked for MyAnimeList's score. Bounded at two extra rounds, and it stops the
+  moment a round learns nothing.
+- **`Lookup.season`**, so a shared broadcast id can be narrowed.
+- **An in-memory response cache** on every provider. A show page opened twice is
+  one request; a scan asking for the same franchise repeatedly is one request.
+  Never written to disk — staleness is then bounded by how long the app runs,
+  which needs no eviction policy and cannot be wrong after a restart. A body that
+  fails to decode is not cached, since caching a failure repeats it without the
+  round trip that might have fixed it.
+
+### The bridge refuses rather than guesses
+
+The mapping is many-to-one in the direction Slate queries it: *3x3 Eyes* and its
+sequel share one IMDb id and one TMDB id. A shared id therefore resolves to
+nothing unless ``Lookup/season`` narrows it. Returning the first match would file
+a sequel's ids onto the original, and nothing downstream would notice — the same
+reason nothing here is ever clamped.
+
+Both shapes of both ambiguous fields decode: `imdb_id` is an array on newer rows
+and a bare string on older ones, `themoviedb_id` is `{"tv": n}` or a bare number.
+
 ## [0.7.0] — 2026-09-05
 
 Everything the request was already paying for, plus the episode lists.
@@ -566,6 +599,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.8.0]: https://github.com/Nico8324/Slate/releases/tag/v0.8.0
 [0.7.0]: https://github.com/Nico8324/Slate/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Nico8324/Slate/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Nico8324/Slate/releases/tag/v0.5.0

@@ -24,7 +24,8 @@ public actor MDBListProvider: MetadataProvider {
     ///   MDBList also accepts `?apikey=`; this deliberately does not use it.
     public init(apiKey: String, session: URLSession = .shared) {
         self.apiKey = apiKey
-        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 5))
+        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 5),
+                         cache: ResponseCache())
     }
 
     public func updateAPIKey(_ apiKey: String) {
