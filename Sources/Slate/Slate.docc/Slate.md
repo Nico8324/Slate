@@ -211,6 +211,9 @@ A provider that fails is not an error either. It lands in
 - ``Franchise``
 - ``Relation``
 - ``ReleaseStatus``
+- ``Candidate``
+- ``Person``
+- ``TitleList``
 
 ### Errors
 

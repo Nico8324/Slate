@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.9.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -214,6 +214,24 @@ Bleach's arc season 2 lives inside TMDB's season 1, so passing `2` straight
 through returns Thousand-Year Blood War's posters — a real picture of the wrong
 thing, with nothing to indicate it.
 
+## 🗂 Where a method lives, and why
+
+**If several providers could answer, it is on `MetadataAggregator` and the answer
+carries its source. If exactly one provider can answer, it is on that provider's
+own type** — and the type you reached for *is* the attribution.
+
+```swift
+await slate.metadata(for: lookup)          // several answer; provenance per field
+await tmdb.candidates(for: "Dragon Ball")  // one answers; the ranking is TMDB's
+await tmdb.titles(in: .popularShows)
+await tmdb.person(id: 287)
+await tmdb.filmography(personID: 287)
+```
+
+Putting a search ranking or a popularity list behind the aggregator would dress
+one provider's opinion as a cross-referenced one. There is nothing to merge, and
+an API that implies otherwise is lying quietly.
+
 ## 🧬 Anime seasons are separate works
 
 `Shingeki no Kyojin Season 2` is not season 2 of anything as far as its own
@@ -337,7 +355,7 @@ wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.9.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.10.0")
 ```
 
 ```swift

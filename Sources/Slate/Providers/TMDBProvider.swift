@@ -24,7 +24,7 @@ public actor TMDBProvider: MetadataProvider {
     /// The language metadata comes back in, as TMDB spells it: `fr-FR`, `ja-JP`.
     /// Artwork is deliberately unaffected — every language is fetched and
     /// ``ArtworkSet/best(_:preferring:)`` chooses.
-    let language: String
+    private(set) var language: String
 
     /// Hold **one instance for the life of the app**. The request allowance and
     /// the remembered orderings both live here, so a provider constructed per
@@ -38,7 +38,7 @@ public actor TMDBProvider: MetadataProvider {
     /// The country whose age rating is wanted, ISO 3166-1: `US`, `FR`, `JP`.
     /// Ratings are per-country and not translations of each other — `TV-MA` has
     /// no French equivalent, France says `16`.
-    let region: String
+    private(set) var region: String
 
     public init(
         accessToken: String, language: String = "en-US", region: String = "US",
@@ -56,6 +56,32 @@ public actor TMDBProvider: MetadataProvider {
     /// Rotate the token in place. Slate never persists it.
     public func updateAPIKey(_ accessToken: String) {
         self.accessToken = accessToken
+    }
+
+    /// Change the metadata language without rebuilding the provider.
+    ///
+    /// Rebuilding is the obvious way to do this and it costs more than it looks:
+    /// the request allowance and every remembered response live in the instance,
+    /// so a new one starts unpaced and empty. A user toggling a language setting
+    /// twice would be paced against nothing at the moment they are making the
+    /// most requests.
+    ///
+    /// Cached responses are discarded here, because they are in the old
+    /// language. Episode-group names are localised too, so orderings go with
+    /// them — the numbering does not change, but the names shown would be stale.
+    public func updateLanguage(_ language: String) async {
+        guard language != self.language else { return }
+        self.language = language
+        seasonCache.removeAll()
+        await http.cache?.removeAll()
+    }
+
+    /// Change the country whose ratings and availability are wanted. Availability
+    /// is per-country, so cached responses go with it.
+    public func updateRegion(_ region: String) async {
+        guard region != self.region else { return }
+        self.region = region
+        await http.cache?.removeAll()
     }
 
     var headers: [String: String] {

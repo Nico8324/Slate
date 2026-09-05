@@ -4,6 +4,45 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] — 2026-09-05
+
+Search, browsing and people — and the rule for where they live.
+
+### Where a method lives
+
+**If several providers could answer, it belongs on `MetadataAggregator` and the
+answer carries its source. If exactly one can, it belongs on that provider's own
+type**, where the type a caller reached for is itself the attribution. A search
+ranking and a popularity list have one possible source and nothing to
+cross-reference; routing them through the aggregator would dress one provider's
+opinion as a merged one, which is an API lying quietly.
+
+### Added
+
+- **`TMDBProvider.candidates(for:kind:page:)`.** The ranked list of what a search
+  might have meant, with posters and years. `snapshot(for:)` still collapses to
+  one, which is right when a title is unambiguous and wrong when a person should
+  choose.
+- **`TMDBProvider.titles(in:page:)`** over ten published lists — popular, top
+  rated, now playing, upcoming, on the air, airing today, trending today and this
+  week, for films and shows. A trending list states its kind per row and drops
+  the people in it.
+- **People.** `person(id:)`, `searchPeople(_:)` and `filmography(personID:)`,
+  which returns both departments in one list ordered newest first: someone who
+  directed one film and acted in another is credited for both, and splitting them
+  would make a caller ask twice to show one filmography.
+
+### Fixed
+
+- **Language and region are settable in place** — `updateLanguage(_:)` and
+  `updateRegion(_:)`, alongside `updateAPIKey(_:)`. Rebuilding the provider was
+  the obvious way to change them and costs more than it looks: the request
+  allowance and every remembered response live in the instance, so a new one
+  starts unpaced and empty. A user toggling a language setting twice would be
+  unpaced at the moment they are making the most requests. Cached responses are
+  dropped on a real change, since they are in the old language, and remembered
+  orderings go with them because episode-group names are localised.
+
 ## [0.9.0] — 2026-09-05
 
 The last of the plan that can be built without a new credential. Verified live
@@ -630,6 +669,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.10.0]: https://github.com/Nico8324/Slate/releases/tag/v0.10.0
 [0.9.0]: https://github.com/Nico8324/Slate/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Nico8324/Slate/releases/tag/v0.8.0
 [0.7.0]: https://github.com/Nico8324/Slate/releases/tag/v0.7.0
