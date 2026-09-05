@@ -40,7 +40,7 @@ public struct Identifiers: Sendable, Hashable {
 public enum FieldKey: String, Sendable, Hashable, CaseIterable {
     case kind, title, originalTitle, overview, releaseDate, runtimeMinutes
     case episodeCount, genres, rating, posterURL, backdropURL, isAnime
-    case contentRating, trailerYouTubeID
+    case contentRating, trailerYouTubeID, cast, ratings
 }
 
 /// The aggregated answer for one title: every field carries every provider's
@@ -64,6 +64,9 @@ public struct TitleMetadata: Sendable, Equatable {
     public var contentRating: Field<String>
     /// A YouTube key, not a URL — a player wants the id.
     public var trailerYouTubeID: Field<String>
+    public var cast: Field<[CastMember]>
+    /// Every site's score, per source. See ``Rating``.
+    public var ratings: Field<[Rating]>
 
     /// Every name this title is known by, highest-priority provider first and
     /// deduplicated — romaji ahead of English for anime, because that is what a
@@ -90,6 +93,8 @@ public struct TitleMetadata: Sendable, Equatable {
         isAnime: Field<Bool> = .init(),
         contentRating: Field<String> = .init(),
         trailerYouTubeID: Field<String> = .init(),
+        cast: Field<[CastMember]> = .init(),
+        ratings: Field<[Rating]> = .init(),
         searchNames: [String] = [],
         failures: [Provider: String] = [:]
     ) {
@@ -108,6 +113,8 @@ public struct TitleMetadata: Sendable, Equatable {
         self.isAnime = isAnime
         self.contentRating = contentRating
         self.trailerYouTubeID = trailerYouTubeID
+        self.cast = cast
+        self.ratings = ratings
         self.searchNames = searchNames
         self.failures = failures
     }
@@ -159,6 +166,8 @@ extension TitleMetadata {
         case .isAnime: isAnime.candidates.map(\.provider)
         case .contentRating: contentRating.candidates.map(\.provider)
         case .trailerYouTubeID: trailerYouTubeID.candidates.map(\.provider)
+        case .cast: cast.candidates.map(\.provider)
+        case .ratings: ratings.candidates.map(\.provider)
         }
     }
 

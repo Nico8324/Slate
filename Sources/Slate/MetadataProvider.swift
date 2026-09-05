@@ -50,6 +50,9 @@ public struct Snapshot: Sendable, Equatable {
     public var contentRating: String?
     /// A YouTube key, not a URL — a player wants the id.
     public var trailerYouTubeID: String?
+    public var cast: [CastMember]?
+    /// One entry per site, never averaged.
+    public var ratings: [Rating]?
     /// Names to search by, this provider's preferred order first.
     public var searchNames: [String]
 
@@ -69,6 +72,8 @@ public struct Snapshot: Sendable, Equatable {
         isAnime: Bool? = nil,
         contentRating: String? = nil,
         trailerYouTubeID: String? = nil,
+        cast: [CastMember]? = nil,
+        ratings: [Rating]? = nil,
         searchNames: [String] = []
     ) {
         self.ids = ids
@@ -86,6 +91,8 @@ public struct Snapshot: Sendable, Equatable {
         self.isAnime = isAnime
         self.contentRating = contentRating
         self.trailerYouTubeID = trailerYouTubeID
+        self.cast = cast
+        self.ratings = ratings
         self.searchNames = searchNames
     }
 }

@@ -4,6 +4,40 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-09-05
+
+Cross-referencing, which is the thing the two-provider cut traded away. Coverage
+of *titles* was never the weak half; coverage of *fields* was.
+
+### Added
+
+- **`MDBListProvider`.** One key returns IMDb, Metacritic, both tomatometers,
+  Letterboxd, Trakt and MyAnimeList together — which is what OMDb and Trakt were
+  each going to be added for separately. Bearer token, injected and rotatable;
+  MDBList also accepts `?apikey=`, and this deliberately does not use it.
+- **`Rating`, and `TitleMetadata.ratings`.** One entry per site, **never
+  averaged**: sites measure different things and disagree usefully, and a film
+  Letterboxd loves and the tomatometer does not is a signal that an average
+  destroys. MDBList's own blended `score` is not reported as a rating for the
+  same reason — it would put an average where a source belongs.
+- **Both scales on every rating.** The normalised 0…10 so two sites are
+  comparable, and the site's own number because Metacritic is out of 100,
+  Letterboxd out of 5, and "73%" and "7.3" read differently to a person. The
+  scale is chosen from the source name rather than guessed from magnitude, which
+  would read a 4.5 IMDb score as a Letterboxd one.
+- **A second lookup pass, once.** MDBList resolves by id and has no title
+  search, so on a search by name it cannot answer until TMDB supplies an id.
+  `metadata(for:)` now asks the silent providers again with the ids it learned —
+  and only when it learned something, so an id-first lookup still costs one round
+  trip.
+
+### Restored
+
+- **Cast**, cut in 0.5.0 for having no caller. That audit optimised for the
+  callers that exist; this package is judged on coverage, and cast is one of the
+  fields a person expects a metadata layer to have. `contentRating` and
+  `trailerYouTubeID` were kept on the same reasoning and it applies here too.
+
 ## [0.5.0] — 2026-09-04
 
 A ponytail audit, applied. **436 lines removed, nothing added.** Every removal
@@ -500,6 +534,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.6.0]: https://github.com/Nico8324/Slate/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Nico8324/Slate/releases/tag/v0.5.0
 [0.4.3]: https://github.com/Nico8324/Slate/releases/tag/v0.4.3
 [0.4.2]: https://github.com/Nico8324/Slate/releases/tag/v0.4.2

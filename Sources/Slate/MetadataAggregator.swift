@@ -42,6 +42,30 @@ public struct MetadataAggregator: Sendable {
     /// ``TitleMetadata/failures`` and the rest still answer. A result where no
     /// provider matched is an empty ``TitleMetadata``, not an error.
     public func metadata(for lookup: Lookup) async -> TitleMetadata {
+        var (snapshots, failures) = await ask(providers, lookup)
+        var result = assemble(snapshots, failures: failures)
+
+        // Second pass, once. A provider that resolves only by id cannot answer a
+        // lookup by name — MDBList has no title search — so it stays silent
+        // until another provider supplies one. Asking again with the ids now
+        // known is the difference between such a provider working and never
+        // firing on the main path at all.
+        let silent = providers.filter { snapshots[$0.provider] == nil && failures[$0.provider] == nil }
+        var enriched = lookup
+        enriched.ids.fill(from: result.ids)
+        guard !silent.isEmpty, enriched.ids != lookup.ids else { return result }
+
+        let (late, lateFailures) = await ask(silent, enriched)
+        guard !late.isEmpty || !lateFailures.isEmpty else { return result }
+        snapshots.merge(late) { first, _ in first }
+        failures.merge(lateFailures) { first, _ in first }
+        result = assemble(snapshots, failures: failures)
+        return result
+    }
+
+    private func ask(
+        _ providers: [any MetadataProvider], _ lookup: Lookup
+    ) async -> (snapshots: [Provider: Snapshot], failures: [Provider: String]) {
         var snapshots: [Provider: Snapshot] = [:]
         var failures: [Provider: String] = [:]
 
@@ -59,8 +83,7 @@ public struct MetadataAggregator: Sendable {
                 }
             }
         }
-
-        return assemble(snapshots, failures: failures)
+        return (snapshots, failures)
     }
 
     /// How a series is divided, from the first season-capable provider that can
@@ -138,6 +161,8 @@ public struct MetadataAggregator: Sendable {
         result.backdropURL = field(.backdropURL, snapshots) { $0.backdropURL }
         result.isAnime = field(.isAnime, snapshots) { $0.isAnime }
         result.contentRating = field(.contentRating, snapshots) { $0.contentRating }
+        result.cast = field(.cast, snapshots) { $0.cast }
+        result.ratings = field(.ratings, snapshots) { $0.ratings }
         result.trailerYouTubeID = field(.trailerYouTubeID, snapshots) { $0.trailerYouTubeID }
 
         result.searchNames = sorted(snapshots, by: priority).flatMap(\.1.searchNames).deduplicatedNames

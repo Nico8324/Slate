@@ -7,6 +7,9 @@ public enum Provider: String, Sendable, Hashable {
     /// Anime: whether a title is one at all, its romaji and native names,
     /// episode counts.
     case aniList
+    /// Cross-referenced scores — IMDb, Metacritic, the tomatometer, Letterboxd,
+    /// MyAnimeList — which no single provider holds.
+    case mdbList
 }
 
 /// A single value, and the provider that supplied it.

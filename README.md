@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.5.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -104,8 +104,9 @@ Thirteen hand-written branches drift apart. A loop does not.
 
 | Provider | Credential | Gives |
 | :--- | :--- | :--- |
-| **TMDB** | v4 read token | The IMDb id · western movies & TV · art · ratings |
+| **TMDB** | v4 read token | The IMDb id · western movies & TV · seasons · art · cast · trailer |
 | **AniList** | **none** | Anime detection · romaji & native names · episode counts |
+| **MDBList** | api key, optional | IMDb · Metacritic · both tomatometers · Letterboxd · Trakt · MyAnimeList |
 
 **Two deliberate silences.** TMDB reports `isAnime` as `nil`, never `false` — it
 has no anime type and its `anime` keyword is volunteer-applied, so AniList
@@ -212,6 +213,26 @@ Bleach's arc season 2 lives inside TMDB's season 1, so passing `2` straight
 through returns Thousand-Year Blood War's posters — a real picture of the wrong
 thing, with nothing to indicate it.
 
+## ⭐ Ratings, cross-referenced
+
+```swift
+result.ratings.best?.first { $0.source == "letterboxd" }?.value   // 8.6, on 0…10
+result.ratings.best?.first { $0.source == "letterboxd" }?.native  // 4.3, as Letterboxd prints it
+```
+
+Never averaged. Sites measure different things and disagree usefully — a film
+Letterboxd loves and the tomatometer does not is a signal, and the mean of the
+two is not. MDBList's own blended `score` is deliberately **not** reported as a
+rating for the same reason: it would put an average where a source belongs.
+
+Each rating carries both its normalised 0…10 value and the site's own scale,
+because Metacritic is out of 100 and Letterboxd out of 5, and "73%" and "7.3"
+read differently to a person.
+
+MDBList resolves by **id, never by name**, so on a title search it stays silent
+until TMDB has supplied one — and `metadata(for:)` then asks it again with the
+ids now known. One extra round trip, only when something was learned.
+
 ## 🎯 Handing off
 
 `result.resolveInput` is `(imdbID, kind, searchNames)` — the shape a resolver
@@ -248,7 +269,8 @@ does not get re-argued — the full version lives in [CHANGELOG.md](CHANGELOG.md
 | **Trakt scrobbling** | A different app's premise; its ratings duplicate MDBList's. |
 | **TheTVDB** | Its episode ordering is the reason to want it — and TMDB's `TVDB Order` episode group already delivers that ordering, on the key we already have. Revisit only for a show where the group is missing or wrong. |
 | **Fanart.tv** | Wanted for logos — and TMDB serves logos, in every language, on the key we already have. Revisit for a title whose logo is missing there. |
-| **MDBList · OMDb** | Each is one more key and one more setup step. Add one when a field is missing that a user *notices*. |
+| ~~**MDBList**~~ | **Shipped in 0.6.0.** One key cross-references six sites, which is what OMDb and Trakt were each going to do separately. |
+| **OMDb · Trakt** | Both are now redundant: MDBList already returns what they were wanted for. |
 | ~~**Per-field priority**~~ | **Shipped in 0.1.1.** Two providers turned out to be enough: AniList counts a cour, TMDB counts the series, so `episodeCount` must be TMDB-first while AniList keeps the names. |
 
 The bar for reopening any of these is the same: **name a title the current path
@@ -257,7 +279,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.5.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.6.0")
 ```
 
 ```swift

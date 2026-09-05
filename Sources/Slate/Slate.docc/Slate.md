@@ -124,6 +124,17 @@ separate from ``SlateError/http(status:body:)`` so "slow down" can be told from
 language. Artwork is deliberately unaffected: every language is fetched and
 ``ArtworkSet/best(_:preferring:)`` chooses.
 
+### Ratings, cross-referenced
+
+``MDBListProvider`` returns IMDb, Metacritic, both tomatometers, Letterboxd,
+Trakt and MyAnimeList on one credential. They are kept per site and never
+averaged — sites measure different things and disagree usefully. Each ``Rating``
+carries its normalised 0…10 value and the site's own scale.
+
+It resolves by id and has no title search, so on a name lookup it stays silent
+until TMDB supplies one; ``MetadataAggregator/metadata(for:)`` then asks again
+with the ids known.
+
 ### Credentials
 
 Slate holds none. ``TMDBProvider`` is constructed with a key it does not source
@@ -185,6 +196,9 @@ A provider that fails is not an error either. It lands in
 - ``Snapshot``
 - ``TMDBProvider``
 - ``AniListProvider``
+- ``MDBListProvider``
+- ``Rating``
+- ``CastMember``
 
 ### Errors
 
