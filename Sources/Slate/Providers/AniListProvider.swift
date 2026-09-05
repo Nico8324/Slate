@@ -92,6 +92,16 @@ public struct AniListProvider: MetadataProvider, Sendable {
             posterURL: media.coverImage?.extraLarge.flatMap(URL.init(string:)),
             backdropURL: media.bannerImage.flatMap(URL.init(string:)),
             isAnime: true,
+            cast: media.castMembers,
+            // Tags are AniList's keywords, ranked by how strongly the community
+            // says they apply. Below sixty is noise — a tag two people agreed on.
+            keywords: media.tags?.filter { ($0.rank ?? 0) >= 60 }.compactMap(\.name).nilIfEmpty,
+            studios: media.studioNames,
+            originalLanguage: "ja",
+            originCountries: ["JP"],
+            status: media.status.flatMap(ReleaseStatus.init(providerValue:)),
+            relations: media.relationList,
+            nextEpisodeAirDate: media.nextAiringEpisode?.date,
             searchNames: media.allNames.deduplicatedNames
         )
     }
@@ -103,7 +113,14 @@ public struct AniListProvider: MetadataProvider, Sendable {
       Page(perPage: 5) {
         media(id: $id, search: $search, type: ANIME) {
           id idMal format episodes duration genres averageScore bannerImage synonyms description
-          popularity
+          popularity status
+          nextAiringEpisode { airingAt }
+          studios { edges { isMain node { name } } }
+          tags { name rank }
+          relations { edges { relationType node { id idMal format title { romaji english } } } }
+          characters(sort: [ROLE, RELEVANCE], perPage: 12) {
+            edges { role node { name { full } } voiceActors(language: JAPANESE) { id name { full } image { large } } }
+          }
           title { romaji english native }
           startDate { year month day }
           coverImage { extraLarge }
@@ -144,6 +161,107 @@ public struct AniListProvider: MetadataProvider, Sendable {
         var title: Title?
         var startDate: FuzzyDate?
         var coverImage: CoverImage?
+        var status: String?
+        var nextAiringEpisode: Airing?
+        var studios: StudioConnection?
+        var tags: [Tag]?
+        var relations: RelationConnection?
+        var characters: CharacterConnection?
+
+        struct Airing: Decodable {
+            var airingAt: Int?
+            var date: Date? { airingAt.map { Date(timeIntervalSince1970: TimeInterval($0)) } }
+        }
+
+        struct Tag: Decodable {
+            var name: String?
+            var rank: Int?
+        }
+
+        struct StudioConnection: Decodable {
+            struct Edge: Decodable {
+                var isMain: Bool?
+                var node: Node?
+                struct Node: Decodable { var name: String? }
+            }
+            var edges: [Edge]?
+        }
+
+        struct RelationConnection: Decodable {
+            struct Edge: Decodable {
+                var relationType: String?
+                var node: Node?
+                struct Node: Decodable {
+                    var id: Int?
+                    var idMal: Int?
+                    var format: String?
+                    var title: Title?
+                }
+            }
+            var edges: [Edge]?
+        }
+
+        struct CharacterConnection: Decodable {
+            struct Edge: Decodable {
+                struct Person: Decodable {
+                    struct Name: Decodable { var full: String? }
+                    struct Image: Decodable { var large: String? }
+                    var id: Int?
+                    var name: Name?
+                    var image: Image?
+                }
+                struct Character: Decodable {
+                    struct Name: Decodable { var full: String? }
+                    var name: Name?
+                }
+                var role: String?
+                var node: Character?
+                var voiceActors: [Person]?
+            }
+            var edges: [Edge]?
+        }
+
+        /// Anime credits are the voice actors, listed against the characters
+        /// they play — which is what a person looking at an anime record expects
+        /// to see, and what TMDB's credits for the same title usually lack.
+        var castMembers: [CastMember]? {
+            let members = (characters?.edges ?? []).compactMap { edge -> CastMember? in
+                guard let actor = edge.voiceActors?.first,
+                      let id = actor.id, let name = actor.name?.full?.nilIfEmpty
+                else { return nil }
+                return CastMember(
+                    id: id, name: name,
+                    character: edge.node?.name?.full?.nilIfEmpty,
+                    profileURL: actor.image?.large.flatMap(URL.init(string:)),
+                    // AniList orders by role then relevance, so position is the
+                    // billing order; MAIN before SUPPORTING.
+                    order: nil
+                )
+            }
+            return members.isEmpty ? nil : members
+        }
+
+        /// The animation studio, not the committee. AniList marks one main
+        /// studio and lists producers, licensors and broadcasters beside it —
+        /// naming all seven answers a question nobody asked.
+        var studioNames: [String]? {
+            let main = (studios?.edges ?? []).filter { $0.isMain == true }.compactMap { $0.node?.name }
+            return main.isEmpty ? nil : main
+        }
+
+        var relationList: [Relation]? {
+            let list = (relations?.edges ?? []).compactMap { edge -> Relation? in
+                guard let type = edge.relationType, let node = edge.node,
+                      let title = (node.title?.romaji ?? node.title?.english)?.nilIfEmpty
+                else { return nil }
+                return Relation(
+                    kind: Relation.Kind(providerValue: type),
+                    ids: Identifiers(aniList: node.id, myAnimeList: node.idMal),
+                    title: title, format: node.format
+                )
+            }
+            return list.isEmpty ? nil : list
+        }
 
         /// Romaji first: it is what a release group names a file.
         ///

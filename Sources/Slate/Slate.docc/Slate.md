@@ -209,6 +209,8 @@ A provider that fails is not an error either. It lands in
 - ``CastMember``
 - ``WatchOption``
 - ``Franchise``
+- ``Relation``
+- ``ReleaseStatus``
 
 ### Errors
 

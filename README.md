@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.8.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.9.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -105,7 +105,7 @@ Thirteen hand-written branches drift apart. A loop does not.
 | Provider | Credential | Gives |
 | :--- | :--- | :--- |
 | **TMDB** | v4 read token | The IMDb id · western movies & TV · seasons · art · cast · trailer |
-| **AniList** | **none** | Anime detection · romaji & native names · episode counts |
+| **AniList** | **none** | Anime detection · romaji & native names · episode counts · voice actors · studio · tags · **relations** |
 | **MDBList** | api key, optional | IMDb · Metacritic · both tomatometers · Letterboxd · Trakt · MyAnimeList |
 | **Fribb bridge** | **none** | Broadcast ids → AniList · MyAnimeList · AniDB ids |
 
@@ -214,6 +214,24 @@ Bleach's arc season 2 lives inside TMDB's season 1, so passing `2` straight
 through returns Thousand-Year Blood War's posters — a real picture of the wrong
 thing, with nothing to indicate it.
 
+## 🧬 Anime seasons are separate works
+
+`Shingeki no Kyojin Season 2` is not season 2 of anything as far as its own
+record is concerned: its own id, its own episode numbering from one, no season
+number anywhere. The only thing tying it to the first is a **sequel edge**.
+
+```swift
+result.relations.best?
+    .filter { $0.kind == .sequel && $0.isWatchable }   // → Season 2
+```
+
+`isWatchable` matters because a related *manga* is a real relation and not
+something a video library can play.
+
+Statuses are one vocabulary too — TMDB says `Returning Series`, AniList says
+`RELEASING`, and `ReleaseStatus` says `.airing`. A consumer comparing two
+providers should not have to know both their words.
+
 ## 🔗 The two id systems
 
 Anime lives under two numbering systems that do not meet: TMDB and IMDb number
@@ -316,7 +334,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.8.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.9.0")
 ```
 
 ```swift

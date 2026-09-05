@@ -73,8 +73,10 @@ public struct Snapshot: Sendable, Equatable {
     /// heuristic there is.
     public var originCountries: [String]?
     public var franchise: Franchise?
-    /// `Returning Series`, `Ended`, `Released`, as the provider spells it.
-    public var status: String?
+    /// Normalised across providers — see ``ReleaseStatus``.
+    public var status: ReleaseStatus?
+    /// Sequels, prequels, side stories. See ``Relation``.
+    public var relations: [Relation]?
     /// When the next episode airs, for a series still running.
     public var nextEpisodeAirDate: Date?
     public var lastEpisodeAirDate: Date?
@@ -105,7 +107,8 @@ public struct Snapshot: Sendable, Equatable {
         originalLanguage: String? = nil,
         originCountries: [String]? = nil,
         franchise: Franchise? = nil,
-        status: String? = nil,
+        status: ReleaseStatus? = nil,
+        relations: [Relation]? = nil,
         nextEpisodeAirDate: Date? = nil,
         lastEpisodeAirDate: Date? = nil,
         searchNames: [String] = []
@@ -134,6 +137,7 @@ public struct Snapshot: Sendable, Equatable {
         self.originCountries = originCountries
         self.franchise = franchise
         self.status = status
+        self.relations = relations
         self.nextEpisodeAirDate = nextEpisodeAirDate
         self.lastEpisodeAirDate = lastEpisodeAirDate
         self.searchNames = searchNames
@@ -174,4 +178,8 @@ extension Array where Element == String {
             return trimmed
         }
     }
+}
+
+extension Array {
+    var nilIfEmpty: [Element]? { isEmpty ? nil : self }
 }

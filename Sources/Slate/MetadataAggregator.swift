@@ -181,6 +181,7 @@ public struct MetadataAggregator: Sendable {
         result.originCountries = field(.originCountries, snapshots) { $0.originCountries }
         result.franchise = field(.franchise, snapshots) { $0.franchise }
         result.status = field(.status, snapshots) { $0.status }
+        result.relations = field(.relations, snapshots) { $0.relations }
         result.nextEpisodeAirDate = field(.nextEpisodeAirDate, snapshots) { $0.nextEpisodeAirDate }
         result.lastEpisodeAirDate = field(.lastEpisodeAirDate, snapshots) { $0.lastEpisodeAirDate }
         result.trailerYouTubeID = field(.trailerYouTubeID, snapshots) { $0.trailerYouTubeID }

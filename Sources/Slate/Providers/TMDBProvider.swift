@@ -155,7 +155,7 @@ public actor TMDBProvider: MetadataProvider {
             originalLanguage: payload.original_language?.nilIfEmpty,
             originCountries: payload.origin_country?.compactMap(\.nilIfEmpty),
             franchise: payload.belongs_to_collection?.franchise,
-            status: payload.status?.nilIfEmpty,
+            status: payload.status.flatMap(ReleaseStatus.init(providerValue:)),
             nextEpisodeAirDate: payload.next_episode_to_air?.air_date?.asReleaseDate,
             lastEpisodeAirDate: payload.last_episode_to_air?.air_date?.asReleaseDate,
             searchNames: [title, originalTitle].compactMap { $0?.nilIfEmpty }.deduplicatedNames

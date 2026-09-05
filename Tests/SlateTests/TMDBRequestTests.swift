@@ -261,7 +261,7 @@ extension TMDBRequestTests {
         #expect(snapshot.studios == ["Fuji TV"])
         #expect(snapshot.originalLanguage == "ja")
         #expect(snapshot.originCountries == ["JP"])
-        #expect(snapshot.status == "Ended")
+        #expect(snapshot.status == .ended, "TMDB says `Ended`, AniList says `FINISHED`, callers see one word")
         #expect(snapshot.nextEpisodeAirDate != nil)
         #expect(snapshot.lastEpisodeAirDate != nil)
         // One request for all of it.

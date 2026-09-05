@@ -42,7 +42,7 @@ public enum FieldKey: String, Sendable, Hashable, CaseIterable {
     case episodeCount, genres, rating, posterURL, backdropURL, isAnime
     case contentRating, trailerYouTubeID, cast, ratings
     case watchOptions, keywords, studios, originalLanguage, originCountries
-    case franchise, status, nextEpisodeAirDate, lastEpisodeAirDate
+    case franchise, status, nextEpisodeAirDate, lastEpisodeAirDate, relations
 }
 
 /// The aggregated answer for one title: every field carries every provider's
@@ -76,7 +76,9 @@ public struct TitleMetadata: Sendable, Equatable {
     public var originalLanguage: Field<String>
     public var originCountries: Field<[String]>
     public var franchise: Field<Franchise>
-    public var status: Field<String>
+    public var status: Field<ReleaseStatus>
+    /// Sequels, prequels, side stories. See ``Relation``.
+    public var relations: Field<[Relation]>
     public var nextEpisodeAirDate: Field<Date>
     public var lastEpisodeAirDate: Field<Date>
 
@@ -113,7 +115,8 @@ public struct TitleMetadata: Sendable, Equatable {
         originalLanguage: Field<String> = .init(),
         originCountries: Field<[String]> = .init(),
         franchise: Field<Franchise> = .init(),
-        status: Field<String> = .init(),
+        status: Field<ReleaseStatus> = .init(),
+        relations: Field<[Relation]> = .init(),
         nextEpisodeAirDate: Field<Date> = .init(),
         lastEpisodeAirDate: Field<Date> = .init(),
         searchNames: [String] = [],
@@ -143,6 +146,7 @@ public struct TitleMetadata: Sendable, Equatable {
         self.originCountries = originCountries
         self.franchise = franchise
         self.status = status
+        self.relations = relations
         self.nextEpisodeAirDate = nextEpisodeAirDate
         self.lastEpisodeAirDate = lastEpisodeAirDate
         self.searchNames = searchNames
@@ -205,6 +209,7 @@ extension TitleMetadata {
         case .originCountries: originCountries.candidates.map(\.provider)
         case .franchise: franchise.candidates.map(\.provider)
         case .status: status.candidates.map(\.provider)
+        case .relations: relations.candidates.map(\.provider)
         case .nextEpisodeAirDate: nextEpisodeAirDate.candidates.map(\.provider)
         case .lastEpisodeAirDate: lastEpisodeAirDate.candidates.map(\.provider)
         }

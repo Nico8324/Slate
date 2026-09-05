@@ -4,6 +4,37 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-09-05
+
+The last of the plan that can be built without a new credential. Verified live
+against AniList, not just fixtures.
+
+### Added
+
+- **`Relation`** — sequels, prequels, side stories, adaptations. This is the
+  piece anime needs and western television does not: a second season is usually a
+  *separate work* with its own id and its own episode numbering from one.
+  `Shingeki no Kyojin Season 2` is not season 2 of anything as far as its record
+  is concerned, and a sequel edge is the only thing tying it to the first.
+  `isWatchable` distinguishes a related manga from a related series.
+- **Voice actors.** An anime cast is its voice actors listed against the
+  characters they play — which is what a person expects to see on an anime
+  record, and what TMDB's credits for the same title usually lack.
+- **`ReleaseStatus`**, one vocabulary across providers. TMDB says
+  `Returning Series`, AniList says `RELEASING`; both now arrive as `.airing`. A
+  consumer comparing two providers' answers should not have to know both their
+  words. **Breaking:** `status` was a `String`.
+- **Studio and tags from AniList.** The studio is the animator, not the
+  committee — AniList lists producers, licensors and broadcasters beside it, and
+  naming all seven answers a question nobody asked. Tags below rank 60 are
+  dropped: a tag two people agreed on is noise, not a keyword.
+
+### Verified live
+
+Attack on Titan returns WIT STUDIO, tags `Kaiju / Revenge / Tragedy`, Yuuki Kaji
+as Eren Yeager, one sequel edge and ten watchable relations of eleven. Frieren
+returns MADHOUSE and `Sousou no Frieren 2nd Season`.
+
 ## [0.8.0] — 2026-09-05
 
 The id bridge, and a cache.
@@ -599,6 +630,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.9.0]: https://github.com/Nico8324/Slate/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Nico8324/Slate/releases/tag/v0.8.0
 [0.7.0]: https://github.com/Nico8324/Slate/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Nico8324/Slate/releases/tag/v0.6.0
