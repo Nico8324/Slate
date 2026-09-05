@@ -116,9 +116,12 @@ public actor TMDBProvider: MetadataProvider {
         let path = kind == .movie ? "/movie/\(id)" : "/tv/\(id)"
         // One request rather than five. `append_to_response` costs nothing extra
         // and these are exactly the fields a library sets on a record.
+        // One request, not eight. Everything below is a field a library shows,
+        // and `append_to_response` returns them all for the price of the request
+        // already being made.
         let extras = kind == .movie
-            ? "external_ids,release_dates,videos,credits"
-            : "external_ids,content_ratings,videos,aggregate_credits"
+            ? "external_ids,release_dates,videos,credits,keywords,translations,watch/providers"
+            : "external_ids,content_ratings,videos,aggregate_credits,keywords,translations,watch/providers"
         let url = try URL.build(Self.api, path: path,
                                 query: ["append_to_response": extras, "language": language])
         let payload = try await http.json(Details.self, url: url, headers: headers)
@@ -131,7 +134,7 @@ public actor TMDBProvider: MetadataProvider {
             kind: kind,
             title: title,
             originalTitle: originalTitle,
-            overview: payload.overview?.nilIfEmpty,
+            overview: payload.localizedOverview(language) ?? payload.overview?.nilIfEmpty,
             releaseDate: (payload.release_date ?? payload.first_air_date)?.asReleaseDate,
             runtimeMinutes: payload.runtime ?? payload.episode_run_time?.first,
             episodeCount: payload.number_of_episodes,
@@ -145,6 +148,15 @@ public actor TMDBProvider: MetadataProvider {
             contentRating: payload.certification(in: region),
             trailerYouTubeID: payload.videos?.trailerKey,
             cast: payload.castMembers,
+            watchOptions: payload.watchOptions(in: region),
+            keywords: payload.keywordNames,
+            studios: payload.studioNames,
+            originalLanguage: payload.original_language?.nilIfEmpty,
+            originCountries: payload.origin_country?.compactMap(\.nilIfEmpty),
+            franchise: payload.belongs_to_collection?.franchise,
+            status: payload.status?.nilIfEmpty,
+            nextEpisodeAirDate: payload.next_episode_to_air?.air_date?.asReleaseDate,
+            lastEpisodeAirDate: payload.last_episode_to_air?.air_date?.asReleaseDate,
             searchNames: [title, originalTitle].compactMap { $0?.nilIfEmpty }.deduplicatedNames
         )
     }
@@ -170,7 +182,12 @@ public actor TMDBProvider: MetadataProvider {
         return sameTitle.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }
     }
 
-    static func profileURL(_ path: String?) -> URL? {
+    static func profileURL(_ path: String?) -> URL? { imageURL(path) }
+
+    /// `path` is third-party JSON. Percent-encoded rather than interpolated raw:
+    /// an unencoded `?` or `#` could not escape the pinned host, but it would
+    /// silently become a query or a fragment and fetch a different picture.
+    static func imageURL(_ path: String?) -> URL? {
         guard let path, let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
         else { return nil }
         return URL(string: "\(images)/original\(encoded)")
@@ -213,6 +230,82 @@ public actor TMDBProvider: MetadataProvider {
         var vote_average: Double?
         var poster_path: String?
         var backdrop_path: String?
+        var original_language: String?
+        var origin_country: [String]?
+        var status: String?
+        var belongs_to_collection: CollectionRef?
+        var networks: [Named]?
+        var production_companies: [Named]?
+        var keywords: KeywordBox?
+        var translations: TranslationBox?
+        var next_episode_to_air: EpisodeStub?
+        var last_episode_to_air: EpisodeStub?
+        var watchProviders: WatchProviderBox?
+
+        enum CodingKeys: String, CodingKey {
+            case id, imdb_id, external_ids, title, name, original_title, original_name
+            case overview, release_date, first_air_date, runtime, episode_run_time
+            case number_of_episodes, genres, vote_average, poster_path, backdrop_path
+            case original_language, origin_country, status, belongs_to_collection
+            case networks, production_companies, keywords, translations
+            case next_episode_to_air, last_episode_to_air, content_ratings, release_dates
+            case videos, credits, aggregate_credits
+            // TMDB names this one with a slash, which is not a Swift identifier.
+            case watchProviders = "watch/providers"
+        }
+
+        struct Named: Decodable { let name: String }
+        struct EpisodeStub: Decodable { var air_date: String? }
+
+        struct CollectionRef: Decodable {
+            let id: Int
+            let name: String
+            var poster_path: String?
+            var backdrop_path: String?
+
+            var franchise: Franchise {
+                Franchise(id: id, name: name,
+                          posterURL: TMDBProvider.imageURL(poster_path),
+                          backdropURL: TMDBProvider.imageURL(backdrop_path))
+            }
+        }
+
+        struct KeywordBox: Decodable {
+            var keywords: [Named]?
+            /// TMDB names the same field `results` on television and `keywords`
+            /// on film.
+            var results: [Named]?
+        }
+
+        struct TranslationBox: Decodable {
+            struct Entry: Decodable {
+                struct Data: Decodable {
+                    var overview: String?
+                    var title: String?
+                    var name: String?
+                }
+                let iso_639_1: String
+                let iso_3166_1: String
+                var data: Data?
+            }
+            var translations: [Entry] = []
+        }
+
+        struct WatchProviderBox: Decodable {
+            struct Region: Decodable {
+                struct Service: Decodable {
+                    let provider_name: String
+                    var logo_path: String?
+                }
+                var link: String?
+                var flatrate: [Service]?
+                var rent: [Service]?
+                var buy: [Service]?
+                var ads: [Service]?
+                var free: [Service]?
+            }
+            var results: [String: Region] = [:]
+        }
 
         var content_ratings: ContentRatings?
         var release_dates: ReleaseDates?
@@ -241,6 +334,56 @@ public actor TMDBProvider: MetadataProvider {
                 var order: Int?
             }
             var cast: [Member] = []
+        }
+
+        var keywordNames: [String]? {
+            let names = (keywords?.keywords ?? keywords?.results)?.map(\.name)
+            return (names?.isEmpty ?? true) ? nil : names
+        }
+
+        var studioNames: [String]? {
+            let names = (networks ?? production_companies)?.map(\.name)
+            return (names?.isEmpty ?? true) ? nil : names
+        }
+
+        /// The overview in the asked-for language, falling back to English.
+        ///
+        /// TMDB returns an empty string rather than omitting the field when a
+        /// language has no translation, and a French library showing a blank
+        /// synopsis is worse than one showing an English synopsis. `translations`
+        /// rides on the same request, so the fallback costs nothing.
+        func localizedOverview(_ language: String) -> String? {
+            if let overview = overview?.nilIfEmpty { return overview }
+            let parts = language.split(separator: "-")
+            let code = String(parts.first ?? "en")
+            let entries = translations?.translations ?? []
+            let exact = entries.first {
+                $0.iso_639_1 == code && $0.iso_3166_1 == (parts.count > 1 ? String(parts[1]) : $0.iso_3166_1)
+            }
+            let candidate = exact ?? entries.first { $0.iso_639_1 == code }
+                ?? entries.first { $0.iso_639_1 == "en" }
+            return candidate?.data?.overview?.nilIfEmpty
+        }
+
+        /// Availability for one region only.
+        ///
+        /// Not merged across regions: a service carrying something in the US and
+        /// not in France is the ordinary case, and a list that hides which
+        /// country each row belongs to answers a question nobody asked.
+        func watchOptions(in region: String) -> [WatchOption]? {
+            guard let entry = watchProviders?.results[region] else { return nil }
+            let link = entry.link.flatMap(URL.init(string:))
+            let groups: [(WatchOption.Kind, [WatchProviderBox.Region.Service]?)] = [
+                (.subscription, entry.flatrate), (.rent, entry.rent), (.buy, entry.buy),
+                (.ads, entry.ads), (.free, entry.free),
+            ]
+            let options = groups.flatMap { kind, services in
+                (services ?? []).map {
+                    WatchOption(service: $0.provider_name, kind: kind, region: region,
+                                logoURL: TMDBProvider.imageURL($0.logo_path), link: link)
+                }
+            }
+            return options.isEmpty ? nil : options
         }
 
         /// The rating for the asked-for country, or nothing.

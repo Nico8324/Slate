@@ -53,6 +53,24 @@ public struct Snapshot: Sendable, Equatable {
     public var cast: [CastMember]?
     /// One entry per site, never averaged.
     public var ratings: [Rating]?
+    /// Where it can be watched, in the region asked for.
+    public var watchOptions: [WatchOption]?
+    /// Free-text tags — `time travel`, `dystopia`. Discovery, not genre.
+    public var keywords: [String]?
+    /// Networks for television, production companies for film.
+    public var studios: [String]?
+    /// ISO 639-1 of the language it was made in, which is not the language it
+    /// was fetched in.
+    public var originalLanguage: String?
+    /// ISO 3166-1 of where it was made. `JP` plus animation is the oldest anime
+    /// heuristic there is.
+    public var originCountries: [String]?
+    public var franchise: Franchise?
+    /// `Returning Series`, `Ended`, `Released`, as the provider spells it.
+    public var status: String?
+    /// When the next episode airs, for a series still running.
+    public var nextEpisodeAirDate: Date?
+    public var lastEpisodeAirDate: Date?
     /// Names to search by, this provider's preferred order first.
     public var searchNames: [String]
 
@@ -74,6 +92,15 @@ public struct Snapshot: Sendable, Equatable {
         trailerYouTubeID: String? = nil,
         cast: [CastMember]? = nil,
         ratings: [Rating]? = nil,
+        watchOptions: [WatchOption]? = nil,
+        keywords: [String]? = nil,
+        studios: [String]? = nil,
+        originalLanguage: String? = nil,
+        originCountries: [String]? = nil,
+        franchise: Franchise? = nil,
+        status: String? = nil,
+        nextEpisodeAirDate: Date? = nil,
+        lastEpisodeAirDate: Date? = nil,
         searchNames: [String] = []
     ) {
         self.ids = ids
@@ -93,6 +120,15 @@ public struct Snapshot: Sendable, Equatable {
         self.trailerYouTubeID = trailerYouTubeID
         self.cast = cast
         self.ratings = ratings
+        self.watchOptions = watchOptions
+        self.keywords = keywords
+        self.studios = studios
+        self.originalLanguage = originalLanguage
+        self.originCountries = originCountries
+        self.franchise = franchise
+        self.status = status
+        self.nextEpisodeAirDate = nextEpisodeAirDate
+        self.lastEpisodeAirDate = lastEpisodeAirDate
         self.searchNames = searchNames
     }
 }

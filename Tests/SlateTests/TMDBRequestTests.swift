@@ -183,4 +183,126 @@ extension TMDBRequestTests {
 
 
 }
+
+  @Suite(.serialized)
+  struct RecordFieldsPartTwo {
+    private func provider(language: String = "en-US", region: String = "US") -> TMDBProvider {
+        TMDBProvider(accessToken: "t", language: language, region: region,
+                     session: StubURLProtocol.session)
+    }
+
+    private func stubShow(_ json: String) {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/tv", json: #"{"results":[{"id":1,"name":"X","popularity":1}]}"#)
+        StubURLProtocol.stub("/tv/1", json: json)
+    }
+
+    @Test func availabilityIsScopedToOneRegion() async throws {
+        stubShow("""
+        {"id":1,"name":"X","watch/providers":{"results":{
+          "US":{"link":"https://tmdb/US","flatrate":[{"provider_name":"Netflix","logo_path":"/n.jpg"}],
+                "rent":[{"provider_name":"Apple TV"}]},
+          "FR":{"flatrate":[{"provider_name":"Canal+"}]}}}}
+        """)
+
+        let snapshot = try #require(await provider(region: "US").snapshot(for: Lookup(search: "X", kind: .series)))
+        let options = try #require(snapshot.watchOptions)
+
+        #expect(options.count == 2, "US only — a service carrying it in France is not an answer here")
+        #expect(options.contains { $0.service == "Netflix" && $0.kind == .subscription })
+        #expect(options.contains { $0.service == "Apple TV" && $0.kind == .rent })
+        #expect(options.allSatisfy { $0.region == "US" })
+        #expect(options.first?.link?.absoluteString == "https://tmdb/US")
+    }
+
+    @Test func aRegionWithNoAvailabilityIsNilNotEmpty() async throws {
+        stubShow(#"{"id":1,"name":"X","watch/providers":{"results":{"US":{"flatrate":[{"provider_name":"Netflix"}]}}}}"#)
+
+        let snapshot = try #require(await provider(region: "JP").snapshot(for: Lookup(search: "X", kind: .series)))
+        #expect(snapshot.watchOptions == nil)
+    }
+
+    @Test func anEmptyLocalisedSynopsisFallsBackRatherThanShowingBlank() async throws {
+        // TMDB returns "" rather than omitting the field when a language has no
+        // translation, and a blank synopsis is worse than an English one.
+        stubShow("""
+        {"id":1,"name":"X","overview":"","translations":{"translations":[
+          {"iso_639_1":"en","iso_3166_1":"US","data":{"overview":"The English one."}},
+          {"iso_639_1":"de","iso_3166_1":"DE","data":{"overview":"Die deutsche."}}]}}
+        """)
+
+        let snapshot = try #require(await provider(language: "fr-FR").snapshot(for: Lookup(search: "X", kind: .series)))
+        #expect(snapshot.overview == "The English one.")
+    }
+
+    @Test func aLocalisedSynopsisIsPreferredToEnglish() async throws {
+        stubShow("""
+        {"id":1,"name":"X","overview":"","translations":{"translations":[
+          {"iso_639_1":"en","iso_3166_1":"US","data":{"overview":"The English one."}},
+          {"iso_639_1":"fr","iso_3166_1":"FR","data":{"overview":"La française."}}]}}
+        """)
+
+        let snapshot = try #require(await provider(language: "fr-FR").snapshot(for: Lookup(search: "X", kind: .series)))
+        #expect(snapshot.overview == "La française.")
+    }
+
+    @Test func keywordsStudiosOriginAndStatusComeFromTheSameRequest() async throws {
+        stubShow("""
+        {"id":1,"name":"X","original_language":"ja","origin_country":["JP"],"status":"Ended",
+         "networks":[{"name":"Fuji TV"}],
+         "keywords":{"results":[{"name":"time travel"},{"name":"dystopia"}]},
+         "last_episode_to_air":{"air_date":"2024-03-01"},
+         "next_episode_to_air":{"air_date":"2026-10-05"}}
+        """)
+
+        let snapshot = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .series)))
+
+        #expect(snapshot.keywords == ["time travel", "dystopia"])
+        #expect(snapshot.studios == ["Fuji TV"])
+        #expect(snapshot.originalLanguage == "ja")
+        #expect(snapshot.originCountries == ["JP"])
+        #expect(snapshot.status == "Ended")
+        #expect(snapshot.nextEpisodeAirDate != nil)
+        #expect(snapshot.lastEpisodeAirDate != nil)
+        // One request for all of it.
+        #expect(StubURLProtocol.requested.filter { $0.path.hasPrefix("/3/tv/1") }.count == 1)
+    }
+
+    @Test func aFilmCarriesItsFranchise() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":603,"title":"X","popularity":9}]}"#)
+        StubURLProtocol.stub("/movie/603", json: """
+        {"id":603,"title":"The Matrix",
+         "belongs_to_collection":{"id":2344,"name":"The Matrix Collection","poster_path":"/c.jpg"},
+         "keywords":{"keywords":[{"name":"simulated reality"}]},
+         "production_companies":[{"name":"Village Roadshow"}]}
+        """)
+
+        let snapshot = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .movie)))
+
+        #expect(snapshot.franchise?.name == "The Matrix Collection")
+        #expect(snapshot.franchise?.posterURL?.absoluteString.hasSuffix("/c.jpg") == true)
+        #expect(snapshot.keywords == ["simulated reality"], "film names the field `keywords`, television `results`")
+        #expect(snapshot.studios == ["Village Roadshow"])
+    }
+
+    @Test func anEpisodeListCarriesWhatALibraryShows() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/tv/1/season/2", json: """
+        {"episodes":[
+          {"id":11,"name":"Pilot","overview":"It begins.","air_date":"2011-04-17",
+           "still_path":"/s.jpg","vote_average":8.1,"season_number":2,"episode_number":1},
+          {"id":12,"name":"Second","season_number":2,"episode_number":2}]}
+        """)
+
+        let episodes = try await provider().episodes(ofShow: 1, nativeSeason: 2)
+
+        #expect(episodes.count == 2)
+        #expect(episodes.first?.title == "Pilot")
+        #expect(episodes.first?.overview == "It begins.")
+        #expect(episodes.first?.rating == 8.1)
+        #expect(episodes.first?.stillURL?.absoluteString.hasSuffix("/s.jpg") == true)
+        #expect(episodes.last?.airDate == nil, "an unaired episode has no date rather than a guessed one")
+    }
+  }
 }

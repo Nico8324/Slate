@@ -22,6 +22,44 @@ extension TMDBProvider {
         return resolved
     }
 
+    /// The episodes of one season, with what a library shows for each: name,
+    /// air date, still, synopsis and score.
+    ///
+    /// Takes **TMDB's own** season number. A corrected ``SeasonStructure`` already
+    /// carries its episodes, so this is for the ordinary path — translate with
+    /// ``SeasonStructure/nativeSeason(ofSeason:)`` if you hold a corrected one.
+    public func episodes(ofShow showID: Int, nativeSeason: Int) async throws -> [Episode] {
+        guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
+        let url = try URL.build(Self.api, path: "/tv/\(showID)/season/\(nativeSeason)",
+                                query: ["language": language])
+        return try await http.json(SeasonPage.self, url: url, headers: headers).episodes.map {
+            Episode(
+                season: $0.season_number ?? nativeSeason,
+                number: $0.episode_number,
+                title: $0.name?.nilIfEmpty,
+                airDate: $0.air_date?.asReleaseDate,
+                tmdbID: $0.id,
+                stillURL: Self.imageURL($0.still_path),
+                overview: $0.overview?.nilIfEmpty,
+                rating: $0.vote_average
+            )
+        }
+    }
+
+    struct SeasonPage: Decodable {
+        struct EpisodeEntry: Decodable {
+            var id: Int?
+            var name: String?
+            var overview: String?
+            var air_date: String?
+            var still_path: String?
+            var vote_average: Double?
+            var season_number: Int?
+            let episode_number: Int
+        }
+        var episodes: [EpisodeEntry] = []
+    }
+
     // MARK: - Deciding
 
     private func resolveSeasons(showID: Int) async throws -> SeasonStructure? {

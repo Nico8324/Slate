@@ -21,6 +21,10 @@ public struct Episode: Sendable, Equatable, Identifiable {
     public var tmdbID: Int?
     /// The frame a provider uses to illustrate this episode.
     public var stillURL: URL?
+    public var overview: String?
+    /// The provider's own score for this episode, 0...10. Anime in particular
+    /// has episodes people seek out by name.
+    public var rating: Double?
     /// Where the provider files this episode in its *own* numbering, when that
     /// differs from the season structure being presented. Stated by the API,
     /// never inferred — which is what makes the two views translatable.
@@ -30,7 +34,8 @@ public struct Episode: Sendable, Equatable, Identifiable {
 
     public init(
         season: Int, number: Int, title: String? = nil, airDate: Date? = nil,
-        tmdbID: Int? = nil, stillURL: URL? = nil, native: EpisodePosition? = nil
+        tmdbID: Int? = nil, stillURL: URL? = nil, overview: String? = nil,
+        rating: Double? = nil, native: EpisodePosition? = nil
     ) {
         self.season = season
         self.number = number
@@ -38,6 +43,8 @@ public struct Episode: Sendable, Equatable, Identifiable {
         self.airDate = airDate
         self.tmdbID = tmdbID
         self.stillURL = stillURL
+        self.overview = overview
+        self.rating = rating
         self.native = native
     }
 }

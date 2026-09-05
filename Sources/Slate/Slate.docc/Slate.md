@@ -124,6 +124,13 @@ separate from ``SlateError/http(status:body:)`` so "slow down" can be told from
 language. Artwork is deliberately unaffected: every language is fetched and
 ``ArtworkSet/best(_:preferring:)`` chooses.
 
+### One request, eight answers
+
+TMDB's `append_to_response` returns availability, keywords, studios, franchise,
+translations, credits and certifications for the price of the request already
+being made. ``WatchOption`` is scoped to one region and never merged across them;
+an empty localised synopsis falls back to English rather than rendering blank.
+
 ### Ratings, cross-referenced
 
 ``MDBListProvider`` returns IMDb, Metacritic, both tomatometers, Letterboxd,
@@ -199,6 +206,8 @@ A provider that fails is not an error either. It lands in
 - ``MDBListProvider``
 - ``Rating``
 - ``CastMember``
+- ``WatchOption``
+- ``Franchise``
 
 ### Errors
 

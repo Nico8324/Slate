@@ -163,6 +163,15 @@ public struct MetadataAggregator: Sendable {
         result.contentRating = field(.contentRating, snapshots) { $0.contentRating }
         result.cast = field(.cast, snapshots) { $0.cast }
         result.ratings = field(.ratings, snapshots) { $0.ratings }
+        result.watchOptions = field(.watchOptions, snapshots) { $0.watchOptions }
+        result.keywords = field(.keywords, snapshots) { $0.keywords }
+        result.studios = field(.studios, snapshots) { $0.studios }
+        result.originalLanguage = field(.originalLanguage, snapshots) { $0.originalLanguage }
+        result.originCountries = field(.originCountries, snapshots) { $0.originCountries }
+        result.franchise = field(.franchise, snapshots) { $0.franchise }
+        result.status = field(.status, snapshots) { $0.status }
+        result.nextEpisodeAirDate = field(.nextEpisodeAirDate, snapshots) { $0.nextEpisodeAirDate }
+        result.lastEpisodeAirDate = field(.lastEpisodeAirDate, snapshots) { $0.lastEpisodeAirDate }
         result.trailerYouTubeID = field(.trailerYouTubeID, snapshots) { $0.trailerYouTubeID }
 
         result.searchNames = sorted(snapshots, by: priority).flatMap(\.1.searchNames).deduplicatedNames

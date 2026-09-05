@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -213,6 +213,21 @@ Bleach's arc season 2 lives inside TMDB's season 1, so passing `2` straight
 through returns Thousand-Year Blood War's posters — a real picture of the wrong
 thing, with nothing to indicate it.
 
+## 📡 One request, eight answers
+
+TMDB's `append_to_response` returns availability, keywords, studios, franchise,
+translations, credits, trailers and certifications **for the price of the request
+already being made**. Slate asks for all of them, because the alternative is eight
+round trips for a single screen.
+
+Availability is scoped to one region and never merged across them: a service
+carrying something in the US and not in France is the ordinary case, and a list
+that hides which country a row belongs to answers a question nobody asked.
+
+An empty localised synopsis falls back to English rather than rendering blank —
+TMDB returns `""` rather than omitting the field, and `translations` rides on the
+same request, so the fallback costs nothing.
+
 ## ⭐ Ratings, cross-referenced
 
 ```swift
@@ -279,7 +294,7 @@ gets wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.6.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.7.0")
 ```
 
 ```swift

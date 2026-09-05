@@ -41,6 +41,8 @@ public enum FieldKey: String, Sendable, Hashable, CaseIterable {
     case kind, title, originalTitle, overview, releaseDate, runtimeMinutes
     case episodeCount, genres, rating, posterURL, backdropURL, isAnime
     case contentRating, trailerYouTubeID, cast, ratings
+    case watchOptions, keywords, studios, originalLanguage, originCountries
+    case franchise, status, nextEpisodeAirDate, lastEpisodeAirDate
 }
 
 /// The aggregated answer for one title: every field carries every provider's
@@ -67,6 +69,16 @@ public struct TitleMetadata: Sendable, Equatable {
     public var cast: Field<[CastMember]>
     /// Every site's score, per source. See ``Rating``.
     public var ratings: Field<[Rating]>
+    /// Where it can be watched, in the region asked for. See ``WatchOption``.
+    public var watchOptions: Field<[WatchOption]>
+    public var keywords: Field<[String]>
+    public var studios: Field<[String]>
+    public var originalLanguage: Field<String>
+    public var originCountries: Field<[String]>
+    public var franchise: Field<Franchise>
+    public var status: Field<String>
+    public var nextEpisodeAirDate: Field<Date>
+    public var lastEpisodeAirDate: Field<Date>
 
     /// Every name this title is known by, highest-priority provider first and
     /// deduplicated — romaji ahead of English for anime, because that is what a
@@ -95,6 +107,15 @@ public struct TitleMetadata: Sendable, Equatable {
         trailerYouTubeID: Field<String> = .init(),
         cast: Field<[CastMember]> = .init(),
         ratings: Field<[Rating]> = .init(),
+        watchOptions: Field<[WatchOption]> = .init(),
+        keywords: Field<[String]> = .init(),
+        studios: Field<[String]> = .init(),
+        originalLanguage: Field<String> = .init(),
+        originCountries: Field<[String]> = .init(),
+        franchise: Field<Franchise> = .init(),
+        status: Field<String> = .init(),
+        nextEpisodeAirDate: Field<Date> = .init(),
+        lastEpisodeAirDate: Field<Date> = .init(),
         searchNames: [String] = [],
         failures: [Provider: String] = [:]
     ) {
@@ -115,6 +136,15 @@ public struct TitleMetadata: Sendable, Equatable {
         self.trailerYouTubeID = trailerYouTubeID
         self.cast = cast
         self.ratings = ratings
+        self.watchOptions = watchOptions
+        self.keywords = keywords
+        self.studios = studios
+        self.originalLanguage = originalLanguage
+        self.originCountries = originCountries
+        self.franchise = franchise
+        self.status = status
+        self.nextEpisodeAirDate = nextEpisodeAirDate
+        self.lastEpisodeAirDate = lastEpisodeAirDate
         self.searchNames = searchNames
         self.failures = failures
     }
@@ -168,6 +198,15 @@ extension TitleMetadata {
         case .trailerYouTubeID: trailerYouTubeID.candidates.map(\.provider)
         case .cast: cast.candidates.map(\.provider)
         case .ratings: ratings.candidates.map(\.provider)
+        case .watchOptions: watchOptions.candidates.map(\.provider)
+        case .keywords: keywords.candidates.map(\.provider)
+        case .studios: studios.candidates.map(\.provider)
+        case .originalLanguage: originalLanguage.candidates.map(\.provider)
+        case .originCountries: originCountries.candidates.map(\.provider)
+        case .franchise: franchise.candidates.map(\.provider)
+        case .status: status.candidates.map(\.provider)
+        case .nextEpisodeAirDate: nextEpisodeAirDate.candidates.map(\.provider)
+        case .lastEpisodeAirDate: lastEpisodeAirDate.candidates.map(\.provider)
         }
     }
 

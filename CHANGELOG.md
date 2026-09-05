@@ -4,6 +4,38 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-09-05
+
+Everything the request was already paying for, plus the episode lists.
+
+### Added
+
+- **Streaming availability**, from TMDB's watch providers — no Watchmode key
+  needed. Scoped to one region and never merged across regions: a service
+  carrying something in the US and not in France is the ordinary case, and a list
+  that hides which country a row belongs to answers a question nobody asked.
+  Subscription, rent, buy, ads and free are distinguished, because "available"
+  and "available for £13.99" are different answers.
+- **Franchise** (`The Matrix Collection`), **keywords**, **studios** — networks
+  for television, production companies for film — **original language**, **origin
+  country**, **status**, and **next/last episode air date**. All from
+  `append_to_response` on the request already being made: one round trip, not
+  eight.
+- **A localised-synopsis fallback.** TMDB returns `""` rather than omitting the
+  field when a language has no translation, so a French library rendered a blank
+  where a synopsis should be. `translations` rides on the same request, so the
+  fallback to English costs nothing — and an actual French translation is still
+  preferred to it.
+- **Episode lists, restored and extended.** `episodes(ofShow:nativeSeason:)` now
+  carries name, air date, still, synopsis and score. An unaired episode has no
+  date rather than a guessed one.
+
+### Notes
+
+`origin_country` and `original_language` are here because `JP` plus animation is
+the oldest anime heuristic there is, and a consumer that wants to check AniList's
+answer against something should be able to.
+
 ## [0.6.0] — 2026-09-05
 
 Cross-referencing, which is the thing the two-provider cut traded away. Coverage
@@ -534,6 +566,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.7.0]: https://github.com/Nico8324/Slate/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Nico8324/Slate/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Nico8324/Slate/releases/tag/v0.5.0
 [0.4.3]: https://github.com/Nico8324/Slate/releases/tag/v0.4.3
