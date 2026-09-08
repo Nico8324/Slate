@@ -12,6 +12,9 @@ which every field carries both a value and the provider that supplied it.
 let slate = MetadataAggregator(providers: [
     AniListProvider(),
     TMDBProvider(accessToken: token),
+    // ``AnimeIDBridge`` and ``MDBListProvider`` are opt-in and in no default
+    // set. A provider left out of this list is never asked, and nothing
+    // reports its absence.
 ])
 
 let result = await slate.metadata(for: Lookup(search: "Attack on Titan"))
@@ -49,14 +52,18 @@ silently overwrite a correction that came from another — and it reads as a syn
 bug for weeks. Provenance has to be per field, and it is far cheaper to design in
 than to retrofit.
 
-The values that lost stay reachable through ``Field/dissent``, but nothing has to
-look at them.
+The values that lost stay reachable through ``Field/candidates``, which lists
+every answer with the winner first — but nothing has to look at them.
 
 ### Seasons and episodes
 
 A series is not described by an episode count. TMDB files Bleach as one season of
 366 episodes; everybody else counts arcs, and a library filed the flat way lines
 up with nothing a person reads or downloads.
+
+``MetadataAggregator/seasons(for:)`` asks **TMDB only**, whatever else is in
+`providers` — the correction comes out of TMDB's episode groups and has no
+equivalent elsewhere.
 
 ```swift
 let structure = await slate.seasons(for: result.ids)

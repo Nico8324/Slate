@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.10.3-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.4-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -51,6 +51,10 @@ looking. A studio's *slate* is also its roster of titles.
 let slate = MetadataAggregator(providers: [
     AniListProvider(),                     // no credential
     TMDBProvider(accessToken: token),      // injected, never stored
+    // Opt-in, and there is no default set — a provider absent from this list
+    // is simply never asked, and nothing reports its absence:
+    // AnimeIDBridge(),                    // no credential; anime ids from a broadcast id
+    // MDBListProvider(apiKey: key),       // ratings from six sites
 ])
 
 let result = await slate.metadata(for: Lookup(search: "Attack on Titan"))
@@ -71,7 +75,7 @@ Every field of `TitleMetadata` is a `Field`, not a bare `String`:
 | `field.best` | The winning value |
 | `field.bestProvider` | Who won it |
 | `field.value(from:)` | What one specific provider said |
-| `field.dissent` | What the losers said — reachable, never the default |
+| `field.candidates` | Every answer, winner first — what the losers said stays reachable |
 | `result.provenance` | `[FieldKey: Provider]` — the whole record at once |
 
 This exists because of a specific bug. A library that stores merged values behind
@@ -126,6 +130,11 @@ TV shows have seasons and episodes, and a provider that says *366 episodes, one
 season* has not answered the question. TMDB files Bleach that way; Detective
 Conan as one season of 1212. Nothing else in the world numbers them like that —
 Wikipedia, TheTVDB and the groups that name the releases all count arcs.
+
+`seasons(for:)` asks **TMDB only**, whatever else is in `providers`: the
+correction comes out of TMDB's episode groups and has no equivalent anywhere
+else, so other providers are skipped by type rather than consulted and found
+wanting.
 
 ```swift
 let structure = await slate.seasons(for: result.ids)
@@ -258,8 +267,15 @@ either bridges to the other, which is why finding anime by name is otherwise the
 only route — and why an unusual romanisation can be found by neither.
 
 ```swift
-AnimeIDBridge()   // no credential; the published cross-map, fetched once
+MetadataAggregator(providers: [..., AnimeIDBridge()])  // no credential
 ```
+
+**It is opt-in and in no default set.** Leaving it out of `providers` does not
+fail, warn, or log — the chain below simply never happens, and an id-only lookup
+comes back without romaji names as though none existed. One consumer held the
+dependency for two releases with it switched off. The cross-map is fetched once,
+lazily, on the first lookup that needs it, so a library with no anime in it never
+downloads anything.
 
 Each round of a lookup can unlock the next: TMDB finds the IMDb id, the bridge
 turns it into a MyAnimeList id, and MDBList can then be asked for MyAnimeList's
@@ -355,7 +371,7 @@ wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.10.3")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.10.4")
 ```
 
 ```swift
@@ -374,7 +390,8 @@ wrong.**
   throughout; `TMDBProvider` is an `actor` because it holds a rotatable key.
 - **No SwiftData, no UI, no `@MainActor` in the API surface.** Mapping these DTOs
   onto persistent models is the app's job and stays there.
-- **No dependencies.** `Foundation` and `URLSession`, nothing else.
+- **No dependencies.** `Foundation`, `URLSession`, and `os` for the handful of
+  log lines in ``AnimeIDBridge``. No package dependencies at all.
 - **Responses are remembered for the life of the process**, never written to
   disk. Staleness is then bounded by how long the app runs, which needs no
   eviction policy and cannot be wrong after a restart.

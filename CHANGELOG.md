@@ -4,6 +4,36 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] — 2026-09-08
+
+Documentation only, continuing 0.10.3's sweep into the README and the DocC page.
+
+### Fixed
+
+- **`Field.dissent` does not exist and never did.** The README's feature table
+  told a reader to call it and the DocC page linked it — so the one affordance
+  the package's whole premise rests on, *the values that lost stay reachable*,
+  was advertised twice as a property that fails to compile. ``Field/candidates``
+  is the real one and lists every answer with the winner first. Documented as
+  that, rather than adding a property to make two sentences true: no API arrives
+  here on a guess about a caller, and there is no caller.
+- **Both worked examples showed a two-provider aggregator**, which is exactly
+  the impression that costs a consumer a day: ``AnimeIDBridge`` and
+  ``MDBListProvider`` are opt-in, in no default set, and a provider left out of
+  `providers` is never asked with nothing at all reporting its absence. Both
+  examples now say so where the reader is looking.
+- **The id-bridge section did not say it was opt-in** — it showed
+  `AnimeIDBridge()` standing alone, as though constructing it were the wiring.
+  It now shows it inside `MetadataAggregator(providers:)` and states the cost of
+  omitting it: an id-only lookup returns no romaji names, as though none
+  existed.
+- **`seasons(for:)` is TMDB-only** in the README and the DocC page too, not just
+  on the method.
+- **"No dependencies. `Foundation` and `URLSession`, nothing else"** stopped
+  being true when 0.10.2 added `os` for the bridge's log lines. Now says
+  `Foundation`, `URLSession` and `os`, and that there are no *package*
+  dependencies — which is the claim the badge makes and the one that matters.
+
 ## [0.10.3] — 2026-09-08
 
 Documentation only. No code changed, and every one of these was found by a
