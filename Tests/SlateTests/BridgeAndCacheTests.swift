@@ -26,6 +26,31 @@ extension TMDBRequestTests {
         return bridge
     }
 
+    @Test func aColdBridgeAskedBySeveralAtOnceDownloadsOnceAndStaysCorrect() async throws {
+        // A library scan is the only workload that asks about several anime at
+        // once, and it is also the only one that finds a cold bridge. Before the
+        // stored task, each caller passed `guard !loaded` during the other's
+        // download: five fetches of 7.5 MB, and — because `index` appends —
+        // every entry filed five times, so every id resolved to five candidates
+        // and therefore to nil. The bridge went quiet for everything.
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("anime-list-full.json", json: rows)
+        let bridge = AnimeIDBridge(session: StubURLProtocol.session)
+
+        let snapshots = await withTaskGroup(of: Snapshot?.self) { group in
+            for _ in 0..<5 {
+                group.addTask { try? await bridge.snapshot(for: Lookup(imdbID: "tt0286390")) }
+            }
+            return await group.reduce(into: [Snapshot?]()) { $0.append($1) }
+        }
+
+        #expect(StubURLProtocol.requested.count == 1, "one download, however many callers")
+        #expect(snapshots.count == 5)
+        for snapshot in snapshots {
+            #expect(try #require(snapshot).ids.aniList == 290, "a double index makes this nil")
+        }
+    }
+
     @Test func aBroadcastIDBecomesAnimeIDs() async throws {
         let bridge = AnimeIDBridge()
         await bridge.index(try JSONDecoder().decode([AnimeIDBridge.Entry].self, from: Data(rows.utf8)))

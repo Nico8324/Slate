@@ -4,6 +4,38 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] — 2026-09-08
+
+### Fixed
+
+- **`AnimeIDBridge` fetched the list once per concurrent caller, and then
+  answered nothing.** `load()` guarded on a flag across an `await`: the
+  suspension releases the actor, so every caller that arrived during the
+  download passed the guard and started its own. Five concurrent lookups meant
+  five downloads of 7.5 MB — and because `index(_:)` appends, every entry was
+  filed five times, so every id resolved to five candidates and therefore, by
+  the bridge's own refusal-to-guess rule, to `nil`. The bridge went silent for
+  everything, which is the worst shape this bug could take: the correctness
+  failure is invisible and looks like "no anime ids exist".
+
+  The shared state is now the *task*, not the flag — the first caller starts it,
+  the rest await the same one. A failed fetch is still not remembered, since one
+  that failed is worth retrying.
+
+  Only reachable by callers who had wired the bridge in, which is why it
+  survived a release: it is in no default provider set.
+
+### Documented
+
+- **`AnimeIDBridge` is opt-in, and that was nowhere.** It appears in no default
+  provider set, so the id → bridge → AniList chain is off until a caller adds
+  `AnimeIDBridge()` to `MetadataAggregator(providers:)`. A consumer can hold the
+  dependency for two releases with the feature quietly switched off — one did.
+- **The one-instance rule costs more here than elsewhere.** Every other provider
+  built per lookup is merely unpaced; a bridge built per lookup downloads 7.5 MB
+  per lookup, because the index it builds *is* the instance. Now said on the
+  initialiser, where the reader is.
+
 ## [0.10.0] — 2026-09-05
 
 Search, browsing and people — and the rule for where they live.

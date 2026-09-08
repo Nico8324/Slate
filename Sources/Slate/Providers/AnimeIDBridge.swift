@@ -32,7 +32,16 @@ public actor AnimeIDBridge: MetadataProvider {
     private var byIMDb: [String: [Entry]] = [:]
     private var byTMDB: [Int: [Entry]] = [:]
     private var loaded = false
+    private var loading: Task<Void, any Error>?
 
+    /// Hold **one instance for the life of the app**, and add it to
+    /// ``MetadataAggregator`` alongside the other providers — it is in no default
+    /// set, so the id → bridge → AniList chain is off until a caller puts it
+    /// there.
+    ///
+    /// The one-instance rule costs more here than anywhere else in Slate. A
+    /// provider built per lookup is merely unpaced; a *bridge* built per lookup
+    /// downloads 7.5 MB per lookup, because the index it builds is the instance.
     public init(session: URLSession = .shared) {
         self.session = session
     }
@@ -68,7 +77,31 @@ public actor AnimeIDBridge: MetadataProvider {
         return nil
     }
 
+    /// Fetches and indexes once, however many callers arrive at once.
+    ///
+    /// The download is the whole reason this needs saying. `guard !loaded` alone
+    /// does not hold across the `await`: the suspension releases the actor, so
+    /// every concurrent caller passes the guard and starts its own 7.5 MB fetch —
+    /// and a library scan, which is the only workload that asks about several
+    /// anime at once, is exactly that case. Worse than the bandwidth, ``index(_:)``
+    /// appends, so a second pass files every entry twice and every id then
+    /// resolves to two candidates and therefore to `nil`. The bridge would go
+    /// quiet for everything.
+    ///
+    /// So the *task* is the shared state, not the flag: the first caller starts
+    /// it, the rest await the same one. A failure is not remembered — `loading`
+    /// is cleared either way — because a fetch that failed is worth retrying,
+    /// unlike one that succeeded.
     private func load() async throws {
+        if loaded { return }
+        if let loading { return try await loading.value }
+        let task = Task { try await fetchAndIndex() }
+        loading = task
+        defer { loading = nil }
+        try await task.value
+    }
+
+    private func fetchAndIndex() async throws {
         guard !loaded else { return }
         let (data, response) = try await session.data(from: Self.listURL)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
