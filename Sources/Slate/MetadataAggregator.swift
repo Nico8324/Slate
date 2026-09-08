@@ -8,7 +8,10 @@ import Foundation
 /// came from another.
 public struct MetadataAggregator: Sendable {
     public let providers: [any MetadataProvider]
-    /// Highest priority first. Providers missing from this list sort last.
+    /// Highest priority first. Providers missing from this list sort last —
+    /// which is where ``Provider/mdbList`` and ``Provider/fribb`` deliberately
+    /// sit: the bridge supplies no fields at all, and MDBList's ratings are a
+    /// field no other provider answers, so neither has an ordering to lose.
     public let priority: [Provider]
 
     /// Priority for fields where the general order is the wrong answer.
@@ -121,11 +124,12 @@ public struct MetadataAggregator: Sendable {
         return nil
     }
 
+    /// Every image every artwork-capable provider holds for one title, merged in
+    /// ``priority`` order and left unsorted.
     ///
-    /// Results come back in the order asked. Concurrency is bounded because a
-    /// scan is the case that breaks things: three hundred titles started at once
-    /// is a thousand requests in flight, and the providers answer that with 429s
-    /// whatever the rate limiter would have preferred.
+    /// A provider that cannot supply pictures is skipped by type rather than
+    /// asked and found wanting, the same way ``seasons(for:)`` skips one that
+    /// cannot supply seasons.
     ///
     /// Never throws: a provider that fails lands in ``ArtworkSet/failures`` and
     /// the rest still answer. Use ``ArtworkSet/best(_:preferring:)`` to choose

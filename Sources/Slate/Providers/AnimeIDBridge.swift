@@ -17,9 +17,9 @@ import os
 ///
 /// **The mapping is many-to-one in the direction this queries.** Two AniDB
 /// entries routinely share an IMDb id — `3x3 Eyes` and its sequel do — so an
-/// IMDb id resolves to a *set* of anime. ``identifiers(for:)`` returns the entry
+/// IMDb id resolves to a *set* of anime. ``snapshot(for:)`` returns the entry
 /// that matches most narrowly and `nil` when it cannot choose, rather than the
-/// first of several.
+/// first of several — narrow it with ``Lookup/season``.
 public actor AnimeIDBridge: MetadataProvider {
     public nonisolated let provider = Provider.fribb
 

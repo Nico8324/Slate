@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.10.4-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.5-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -102,7 +102,9 @@ for (field, provider) in result.provenance {
 }
 ```
 
-Thirteen hand-written branches drift apart. A loop does not.
+Twenty-six hand-written branches drift apart. A loop does not — and `FieldKey`
+has grown from thirteen cases to twenty-six since that sentence was written,
+which is the argument making itself.
 
 ## 🔌 Providers
 
@@ -371,7 +373,7 @@ wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.10.4")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.10.5")
 ```
 
 ```swift

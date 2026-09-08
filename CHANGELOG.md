@@ -4,6 +4,33 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.5] — 2026-09-08
+
+Documentation only. The end of the sweep — this pass was systematic rather than
+reactive: every DocC symbol link in the package checked against what is actually
+declared, and every counted claim recounted.
+
+### Fixed
+
+- **`artwork(for:)` carried the deleted batch method's documentation.** *"Results
+  come back in the order asked. Concurrency is bounded… three hundred titles
+  started at once"* described `metadata(for: [Lookup], maxConcurrent:)`, removed
+  in 0.5.0. It had been stranded for five releases on a method that takes a
+  single id, above an orphaned `///` where its own summary line used to be. The
+  method now documents itself.
+- **`AnimeIDBridge`'s type doc pointed at `identifiers(for:)`**, which does not
+  exist — the entry point is ``AnimeIDBridge/snapshot(for:)``. The sentence
+  explaining the package's most subtle refusal named a method a reader could not
+  find, and now also names ``Lookup/season`` as the way to narrow it.
+- **`FieldKey` has twenty-six cases, not thirteen.** The README argued for a
+  loop over *"thirteen hand-written branches"*. The count doubled across five
+  releases while the sentence stood still — which is the argument making itself,
+  so it now says so.
+- **``Provider/mdbList`` and ``Provider/fribb`` are absent from the default
+  ``priority``** and it looked like an oversight. It is not: the bridge supplies
+  no fields at all, and MDBList's ratings are a field nothing else answers, so
+  neither has an ordering to lose. Said on the property.
+
 ## [0.10.4] — 2026-09-08
 
 Documentation only, continuing 0.10.3's sweep into the README and the DocC page.
