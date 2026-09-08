@@ -4,6 +4,32 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] — 2026-09-08
+
+Documentation only. No code changed, and every one of these was found by a
+consumer acting on what the docs said.
+
+### Fixed
+
+- **`Lookup(imdbID:kind:)` said the id bridge does not exist.** *"No id bridge to
+  it exists from IMDb"* was true until 0.8.0 and has been the opposite of true
+  since — and it is the sentence a consumer reads at the moment they are choosing
+  between the id path and the name path. It sent one to the name path months ago
+  and a whole name-walking helper was built partly because of it. Now says what
+  is actually true: AniList is reached from an id when ``AnimeIDBridge`` is
+  wired, and not when it isn't.
+- **`seasons(for:)` is TMDB-only and did not say so.** It filters ``providers``
+  to `TMDBProvider` by type, so every other provider in the list is skipped.
+  `MetadataAggregator(providers:)` reads as *these are the providers*, and a
+  method quietly consulting a subset of them is invisible until you read the
+  body — a consumer added the bridge to an aggregator whose only call site was
+  this one, and the wiring was inert with nothing to say so.
+- **The same doc claimed ``priority`` order**, which it has never used. There is
+  only one answer to prefer; the first `TMDBProvider` that returns a structure
+  wins.
+- **A dangling ``SeasonProvider`` link** in `ArtworkProvider`'s doc — a protocol
+  that does not exist and, judging by the sentence around it, never did.
+
 ## [0.10.2] — 2026-09-08
 
 ### Added

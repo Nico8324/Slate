@@ -22,9 +22,18 @@ public struct Lookup: Sendable, Hashable {
         self.season = season
     }
 
-    /// The id path. Note that AniList cannot answer this one: no id bridge to
-    /// it exists from IMDb, which is why ``Lookup/init(search:year:kind:)``
-    /// is the lookup that reaches every provider.
+    /// The id path.
+    ///
+    /// AniList cannot answer an IMDb id itself — it numbers the work, not the
+    /// broadcast. It is reached anyway *if* ``AnimeIDBridge`` is in the
+    /// aggregator's providers: the bridge turns the id into an AniList id and
+    /// ``MetadataAggregator/metadata(for:)`` asks again in a later round, so the
+    /// romaji names arrive from an id alone.
+    ///
+    /// Without the bridge wired, this path reaches TMDB and not AniList, and a
+    /// result's ``TitleMetadata/searchNames`` will be TMDB's two names with no
+    /// romaji among them. ``Lookup/init(search:year:kind:)`` reaches every
+    /// provider unaided and is the safer default when a title is at hand.
     public init(imdbID: String, kind: Kind? = nil) {
         self.init(ids: Identifiers(imdb: imdbID), kind: kind)
     }

@@ -27,8 +27,12 @@ public struct AniListProvider: MetadataProvider, Sendable {
     }
 
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
-        // No id bridge exists from IMDb or TMDB to AniList, so a name is the
-        // only way in. Without one there is nothing to ask.
+        // AniList numbers the work, not the broadcast, so it cannot answer an
+        // IMDb or TMDB id directly — a name, or an AniList id someone else
+        // supplied, is the only way in. `AnimeIDBridge` is that someone: it
+        // turns a broadcast id into an AniList one and the aggregator asks
+        // again in a later round. Without it in the providers, an id-only
+        // lookup reaches this and there is nothing to ask.
         guard lookup.ids.aniList != nil || lookup.query != nil else { return nil }
 
         let body = try JSONEncoder().encode(Request(

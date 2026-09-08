@@ -115,9 +115,9 @@ public struct ArtworkSet: Sendable, Equatable {
 
 /// A provider that can also supply pictures.
 ///
-/// Separate from ``MetadataProvider`` for the same reason ``SeasonProvider`` is:
-/// it is another request, and a caller asking *what is this* should not pay for
-/// forty image records it did not ask for.
+/// Separate from ``MetadataProvider`` for the same reason seasons are a separate
+/// call: it is another request, and a caller asking *what is this* should not
+/// pay for forty image records it did not ask for.
 public protocol ArtworkProvider: MetadataProvider {
     /// - Parameter nativeSeason: the **provider's own** season number, not one
     ///   from a corrected ``SeasonStructure``. Translate first with

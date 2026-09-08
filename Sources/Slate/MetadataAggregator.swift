@@ -97,8 +97,19 @@ public struct MetadataAggregator: Sendable {
         return (snapshots, failures)
     }
 
-    /// How a series is divided, from the first season-capable provider that can
-    /// say — in ``priority`` order.
+    /// How a series is divided.
+    ///
+    /// **TMDB only, whatever else is in ``providers``.** The correction this
+    /// exists for comes out of TMDB's `episode_groups` and has no equivalent
+    /// anywhere else, so this asks the `TMDBProvider`s in the list and skips
+    /// every other provider — including ones that answer ``metadata(for:)``
+    /// perfectly well. Worth saying because `MetadataAggregator(providers:)`
+    /// reads as *these are the providers*, and a method consulting a subset of
+    /// them by type is invisible until you read the body: adding a provider
+    /// here to make seasons work is inert, and nothing fails to tell you so.
+    ///
+    /// Nor is ``priority`` consulted — there is only ever one answer to prefer.
+    /// The first `TMDBProvider` in ``providers`` that returns a structure wins.
     ///
     /// A separate request from ``metadata(for:)`` because it is a separate
     /// question and several requests more expensive. A caller asking *what is
