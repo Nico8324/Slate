@@ -4,6 +4,29 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-09-08
+
+### Added
+
+- **The bridge says what it is doing.** Slate logs nothing anywhere else and
+  did not need to; `AnimeIDBridge` is the exception, because it is the one
+  provider with three separate ways to be silently unhelpful — it holds nothing
+  for an id, it holds several and refuses to choose, or its one large fetch
+  failed — and from outside all three are the same `nil`. It is also the only
+  large one-off download in the package, and a lazy one, so a consumer cannot
+  see it start, finish, or happen more than once.
+
+  That combination is what let 0.10.0's concurrency bug present to a consumer as
+  *romaji ordering is broken* rather than as *the bridge is downloading five
+  times*. One `Logger` line at each end of the load, and one on the
+  refuse-to-choose path — which also names `Lookup.season` as the way to narrow
+  it, since that refusal is the one the caller can actually fix.
+
+  `os.Logger`, so no dependency is added and the badge stays true. Counts, byte
+  totals and catalogue ids are logged `.public`: they are numbers about titles,
+  never about a person, and a refusal that will not say which id it refused
+  cannot be acted on.
+
 ## [0.10.1] — 2026-09-08
 
 ### Fixed

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Turns a TMDB, IMDb or TVDB id into the AniList, MyAnimeList and AniDB ids
 /// that anime services answer to.
@@ -27,6 +28,12 @@ public actor AnimeIDBridge: MetadataProvider {
     public static let listURL = URL(
         string: "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json"
     )!
+
+    /// Slate logs nothing anywhere else, and needs to here. This provider has
+    /// three ways to be silently unhelpful — it holds nothing, it holds several
+    /// and refuses to choose, or its one large fetch failed — and from outside
+    /// all three are the same `nil`.
+    static let log = Logger(subsystem: "Slate", category: "AnimeIDBridge")
 
     private let session: URLSession
     private var byIMDb: [String: [Entry]] = [:]
@@ -63,7 +70,10 @@ public actor AnimeIDBridge: MetadataProvider {
         var candidates: [Entry] = []
         if let imdb = lookup.ids.imdb { candidates = byIMDb[imdb] ?? [] }
         if candidates.isEmpty, let tmdb = lookup.ids.tmdb { candidates = byTMDB[tmdb] ?? [] }
-        guard !candidates.isEmpty else { return nil }
+        guard !candidates.isEmpty else {
+            Self.log.debug("no entry for \(Self.describe(lookup), privacy: .public)")
+            return nil
+        }
         if candidates.count == 1 { return candidates.first }
 
         // Several works share this broadcast id. A season number narrows it
@@ -74,7 +84,27 @@ public actor AnimeIDBridge: MetadataProvider {
             let matching = candidates.filter { $0.season?.tmdb == season || $0.season?.tvdb == season }
             if matching.count == 1 { return matching.first }
         }
+        // The refusal a consumer most needs told apart from the two silences
+        // either side of it. "I hold nothing for this id" and "I hold several
+        // and will not choose" are the same `nil` from outside, and the second
+        // is fixable by the caller — `Lookup.season` narrows it.
+        Self.log.notice(
+            """
+            \(candidates.count, privacy: .public) works share \
+            \(Self.describe(lookup), privacy: .public); refusing to choose\
+            \(lookup.season == nil ? " — pass Lookup.season to narrow it" : "", privacy: .public)
+            """
+        )
         return nil
+    }
+
+    /// The ids a lookup reached the bridge with. Public in the log on purpose:
+    /// these are catalogue numbers, not anything about a person, and a refusal
+    /// that does not say which id it refused cannot be acted on.
+    static func describe(_ lookup: Lookup) -> String {
+        [lookup.ids.imdb, lookup.ids.tmdb.map { "tmdb:\($0)" }]
+            .compactMap { $0 }
+            .joined(separator: " ")
     }
 
     /// Fetches and indexes once, however many callers arrive at once.
@@ -103,11 +133,25 @@ public actor AnimeIDBridge: MetadataProvider {
 
     private func fetchAndIndex() async throws {
         guard !loaded else { return }
+        // The one large fetch in the package, and the one a consumer cannot
+        // otherwise see happening — it is lazy, it is 7.5 MB, and before 0.10.1
+        // it could silently happen once per concurrent caller. One line at each
+        // end makes "did this download, how often, and what did it hold" a
+        // question the log answers.
+        Self.log.notice("loading the id bridge — \(Self.listURL.lastPathComponent, privacy: .public)")
         let (data, response) = try await session.data(from: Self.listURL)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            Self.log.error("id bridge failed — HTTP \(http.statusCode, privacy: .public)")
             throw SlateError.http(status: http.statusCode, body: "")
         }
         index(try JSONDecoder().decode([Entry].self, from: data))
+        Self.log.notice(
+            """
+            id bridge ready — \(data.count, privacy: .public) bytes, \
+            \(self.byIMDb.count, privacy: .public) imdb ids, \
+            \(self.byTMDB.count, privacy: .public) tmdb ids
+            """
+        )
     }
 
     func index(_ entries: [Entry]) {
