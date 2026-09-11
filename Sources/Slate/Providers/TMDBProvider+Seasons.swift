@@ -14,8 +14,14 @@ extension TMDBProvider {
     public func seasons(for ids: Identifiers) async throws -> SeasonStructure? {
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
 
-        guard let showID = try await showID(for: ids) else { return nil }
-        if let cached = seasonCache[showID] { return cached }
+        guard let showID = try await showID(for: ids) else {
+            Log.seasons.notice("\(Log.describe(ids), privacy: .public) — no TMDB show id, so no seasons")
+            return nil
+        }
+        if let cached = seasonCache[showID] {
+            Log.seasons.debug("tmdb \(showID, privacy: .public) — ordering remembered from an earlier lookup")
+            return cached
+        }
 
         let resolved = try await resolveSeasons(showID: showID)
         seasonCache[showID] = resolved
@@ -72,7 +78,15 @@ extension TMDBProvider {
         guard !native.isEmpty else { return nil }
 
         let plain = SeasonStructure(nativeSeasons: native, provider: .tmdb)
-        guard Self.isFlattened(native) else { return plain }
+        guard Self.isFlattened(native) else {
+            Log.seasons.debug(
+                "tmdb \(showID, privacy: .public) — \(native.count, privacy: .public) native seasons, not flattened, using TMDB's own"
+            )
+            return plain
+        }
+        Log.seasons.notice(
+            "tmdb \(showID, privacy: .public) — looks flattened (longest season \(native.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0, privacy: .public) episodes), looking for an episode group"
+        )
 
         let total = native.filter { $0.number > 0 }.reduce(0) { $0 + $1.episodeCount }
         let summaries = try await http.json(
@@ -81,8 +95,14 @@ extension TMDBProvider {
             headers: headers
         ).results
         guard let chosen = Self.preferredGroup(among: summaries, coveringAtLeast: total) else {
+            Log.seasons.notice(
+                "tmdb \(showID, privacy: .public) — \(summaries.count, privacy: .public) episode groups, none eligible (need >1 group covering all \(total, privacy: .public) episodes, and never a story-arc cut). Leaving TMDB's own seasons"
+            )
             return plain
         }
+        Log.seasons.notice(
+            "tmdb \(showID, privacy: .public) — chose group \"\(chosen.name, privacy: .public)\" (\(chosen.group_count, privacy: .public) groups, \(chosen.episode_count, privacy: .public) episodes)"
+        )
 
         let group = try await http.json(
             EpisodeGroupPayload.self,
@@ -93,7 +113,12 @@ extension TMDBProvider {
         // An ordering that turns out not to divide anything is not a correction,
         // and adopting it would swap one flat season for another while claiming
         // to have fixed something.
-        guard seasons.filter({ $0.number > 0 }).count > 1 else { return plain }
+        guard seasons.filter({ $0.number > 0 }).count > 1 else {
+            Log.seasons.notice(
+                "tmdb \(showID, privacy: .public) — group \"\(group.name, privacy: .public)\" divides into nothing, rejecting it rather than swapping one flat season for another"
+            )
+            return plain
+        }
 
         // Nor is one that leaves the long run standing and files extras beside
         // it. Hunter x Hunter's `Complete Series` ordering returns the 62-episode
@@ -102,8 +127,19 @@ extension TMDBProvider {
         // label. The run must actually be broken up.
         let flattest = native.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0
         let biggestNow = seasons.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0
-        guard biggestNow < flattest else { return plain }
+        guard biggestNow < flattest else {
+            // The Hunter x Hunter "Complete Series" trap: the long run survives
+            // as season one and the OVAs are filed beside it, so the flattening
+            // this was chosen to fix is intact and now wearing a label.
+            Log.seasons.notice(
+                "tmdb \(showID, privacy: .public) — group \"\(group.name, privacy: .public)\" leaves a \(biggestNow, privacy: .public)-episode season against \(flattest, privacy: .public) native; it has not broken the run up, rejecting"
+            )
+            return plain
+        }
 
+        Log.seasons.notice(
+            "tmdb \(showID, privacy: .public) — corrected \(native.count, privacy: .public) native seasons to \(seasons.filter { $0.number > 0 }.count, privacy: .public) via \"\(group.name, privacy: .public)\""
+        )
         return SeasonStructure(seasons: seasons, orderingName: group.name,
                                nativeSeasons: native, provider: .tmdb)
     }

@@ -55,6 +55,8 @@ public actor TMDBProvider: MetadataProvider {
 
     /// Rotate the token in place. Slate never persists it.
     public func updateAPIKey(_ accessToken: String) {
+        // Never the token, never a prefix of it, never its length.
+        Log.tmdb.notice("access token rotated")
         self.accessToken = accessToken
     }
 
@@ -94,14 +96,27 @@ public actor TMDBProvider: MetadataProvider {
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
 
         if let id = lookup.ids.tmdb, let kind = lookup.kind {
+            Log.tmdb.debug("resolving by tmdb id \(id, privacy: .public) (\(kind.rawValue, privacy: .public))")
             return try await details(id: id, kind: kind)
         }
-        if let imdb = lookup.ids.imdb, let hit = try await find(imdb: imdb) {
+        if let imdb = lookup.ids.imdb {
+            guard let hit = try await find(imdb: imdb) else {
+                Log.tmdb.notice("\(imdb, privacy: .public) — TMDB holds no movie or show under that IMDb id")
+                return nil
+            }
+            Log.tmdb.debug("\(imdb, privacy: .public) → tmdb \(hit.id, privacy: .public) (\(hit.kind.rawValue, privacy: .public))")
             return try await details(id: hit.id, kind: hit.kind)
         }
-        if let query = lookup.query, let hit = try await search(query, year: lookup.year, kind: lookup.kind) {
+        if let query = lookup.query {
+            guard let hit = try await search(query, year: lookup.year, kind: lookup.kind) else {
+                Log.tmdb.notice("no search result for the requested name")
+                return nil
+            }
             return try await details(id: hit.id, kind: hit.kind)
         }
+        // Neither an id nor a name: nothing was asked, which is different from
+        // asking and finding nothing.
+        Log.tmdb.debug("lookup carries no tmdb id, no imdb id and no name — nothing to ask")
         return nil
     }
 
@@ -205,8 +220,21 @@ public actor TMDBProvider: MetadataProvider {
         let sameTitle = results.filter {
             ($0.name ?? $0.title ?? "").normalizedForMatching == asked
         }
-        guard !sameTitle.isEmpty else { return results.first }
-        return sameTitle.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }
+        guard !sameTitle.isEmpty else {
+            Log.tmdb.debug(
+                "no exact title match among \(results.count, privacy: .public) results — keeping TMDB's own ranking"
+            )
+            return results.first
+        }
+        let winner = sameTitle.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }
+        // The Hunter x Hunter case. Worth a line because picking the wrong
+        // adaptation is wrong about everything downstream and looks like nothing.
+        if sameTitle.count > 1 {
+            Log.tmdb.notice(
+                "\(sameTitle.count, privacy: .public) results carry the asked-for title exactly — took tmdb \(winner?.id ?? 0, privacy: .public), the most popular"
+            )
+        }
+        return winner
     }
 
     static func profileURL(_ path: String?) -> URL? { imageURL(path) }

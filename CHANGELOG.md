@@ -4,6 +4,60 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-09-11
+
+Logging, everywhere a decision is made. **Minor rather than patch**: no
+signature moved, but a package that wrote nothing to the unified log now writes
+to it on every lookup, and that is a behaviour change a consumer should adopt
+deliberately.
+
+### Added
+
+- **`Log`** — one file holding every logger and, more to the point, deciding the
+  privacy rules once. Subsystem `Slate`, one category per area: `HTTP`,
+  `Aggregator`, `TMDB`, `AniList`, `MDBList`, `AnimeIDBridge`, `Seasons`,
+  `Artwork`.
+- **Every silent `nil` now says why it was nil.** That is the whole point. This
+  package returns `nil` rather than guessing in a dozen places — an unmatched
+  title, an ambiguous broadcast id, an episode group rejected for not breaking
+  up the run, a provider with no id to resolve by yet — and from outside all of
+  them looked identical. 0.10.0's concurrency bug reached a consumer as *romaji
+  ordering is broken* for exactly this reason.
+- **`HTTP` logs every request**: method, endpoint, attempt number, status,
+  byte count, duration, cache hits, retries with the wait it is about to take,
+  and the failure that was previously invisible — a 200 whose body did not
+  decode, naming the type that failed.
+- **The season chain narrates its decisions**, which are the most consequential
+  in the package: whether a show looks flattened and by what margin, which
+  episode group was chosen and why, and each rejection — a group that divides
+  into nothing, or one that leaves the long run standing (the Hunter x Hunter
+  `Complete Series` trap).
+- **The aggregator logs one summary line per lookup**: who answered, who failed,
+  and who was in the provider list and matched nothing. Plus an `error` when
+  ``MetadataAggregator/seasons(for:)`` is called with no `TMDBProvider` present,
+  or ``MetadataAggregator/artwork(for:kind:nativeSeason:)`` with nothing
+  artwork-capable — the inert-wiring case that previously returned `nil` in
+  silence.
+
+### The privacy rule, and it is not a convention
+
+Catalogue ids, counts, byte totals, status codes and decisions are `.public` —
+numbers about *titles*. A search query or a title is `.private`, because what a
+person looks for is their library contents and a shipped app must not write it
+into the system log.
+
+**A credential is neither.** No log line in this package interpolates a token,
+a key or a header at any privacy level, and `HTTP` logs a URL's host and path
+with the query stripped — TMDB puts the search term in `?query=`, and MDBList's
+other spelling of authentication is `?apikey=`. `.private` redacts a line for a
+reader; it does not stop the string being built, which is not the distance to
+keep between a token and a log.
+
+A test enforces both halves: the redaction helper is asserted against a real
+search URL and a key-bearing one, and a grep-as-a-test fails the build if any
+log line in `Sources` interpolates `accessToken`, `apiKey`, `headers` or
+`Bearer`. It was verified by adding such a line and watching it fail.
+
 ## [0.10.5] — 2026-09-08
 
 Documentation only. The end of the sweep — this pass was systematic rather than

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public enum SlateError: Error, Sendable, Equatable {
     /// The provider has no API key, or the one it has was rejected.
@@ -96,39 +97,74 @@ struct HTTP: Sendable {
         // Keyed by method, URL and body: AniList is a POST whose URL never
         // changes, so the URL alone would collapse every query into one entry.
         let key = "\(method) \(url.absoluteString) \(body?.hashValue ?? 0)"
+        let endpoint = Log.redactingQuery(url)
         if let cached = await cache?.data(for: key) {
+            Log.http.debug("cache hit \(method, privacy: .public) \(endpoint, privacy: .public)")
             return try JSONDecoder().decode(Response.self, from: cached)
         }
 
         var lastRetryAfter: TimeInterval?
 
+        let started = ContinuousClock.now
         for attempt in 1...max(attempts, 1) {
+            // Deliberately never the headers and never the query: one carries
+            // the bearer token, the other carries what a person searched for.
+            Log.http.debug(
+                "\(method, privacy: .public) \(endpoint, privacy: .public) attempt \(attempt, privacy: .public)/\(max(self.attempts, 1), privacy: .public)"
+            )
             await limiter?.waitForTurn()
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else {
+                Log.http.debug("\(endpoint, privacy: .public) — no HTTP response, decoding anyway")
                 return try JSONDecoder().decode(Response.self, from: data)
             }
 
             if http.statusCode == 429 || (500..<600).contains(http.statusCode) {
                 let retryAfter = Self.retryAfter(http)
                 lastRetryAfter = retryAfter
-                guard attempt < attempts else { break }
+                guard attempt < attempts else {
+                    Log.http.error(
+                        "\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public) on the last of \(max(self.attempts, 1), privacy: .public) attempts, giving up"
+                    )
+                    break
+                }
+                Log.http.notice(
+                    "\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public), retrying in \(retryAfter ?? Self.backoff(attempt), privacy: .public)s"
+                )
                 // The server's own number where it gave one — it knows when the
                 // window resets and guessing shorter just burns the next attempt.
                 try? await Task.sleep(for: .seconds(retryAfter ?? Self.backoff(attempt)))
                 continue
             }
             guard (200..<300).contains(http.statusCode) else {
+                Log.http.error(
+                    "\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public), \(data.count, privacy: .public) bytes"
+                )
                 throw SlateError.http(status: http.statusCode,
                                       body: String(decoding: data.prefix(512), as: UTF8.self))
             }
-            let decoded = try JSONDecoder().decode(Response.self, from: data)
+            let decoded: Response
+            do {
+                decoded = try JSONDecoder().decode(Response.self, from: data)
+            } catch {
+                // The failure a caller cannot diagnose from the outside: a 200
+                // whose shape changed. Says which type failed to decode, never
+                // the body — that is the provider's payload about a title.
+                Log.http.error(
+                    "\(endpoint, privacy: .public) — HTTP 200 but \(String(describing: Response.self), privacy: .public) did not decode: \(error.localizedDescription, privacy: .public)"
+                )
+                throw error
+            }
+            Log.http.debug(
+                "\(endpoint, privacy: .public) — \(http.statusCode, privacy: .public), \(data.count, privacy: .public) bytes in \(started.duration(to: .now).milliseconds, privacy: .public)ms"
+            )
             // Stored only after decoding: a body that does not parse is not an
             // answer, and caching it would repeat the failure without the round
             // trip that might have fixed it.
             await cache?.store(data, for: key)
             return decoded
         }
+        Log.http.error("\(endpoint, privacy: .public) — still rate limited after every attempt")
         throw SlateError.rateLimited(retryAfter: lastRetryAfter)
     }
 

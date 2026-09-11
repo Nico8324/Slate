@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.10.5-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.11.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -373,7 +373,7 @@ wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.10.5")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.11.0")
 ```
 
 ```swift
@@ -392,8 +392,13 @@ wrong.**
   throughout; `TMDBProvider` is an `actor` because it holds a rotatable key.
 - **No SwiftData, no UI, no `@MainActor` in the API surface.** Mapping these DTOs
   onto persistent models is the app's job and stays there.
-- **No dependencies.** `Foundation`, `URLSession`, and `os` for the handful of
-  log lines in ``AnimeIDBridge``. No package dependencies at all.
+- **No dependencies.** `Foundation`, `URLSession` and `os`. No package
+  dependencies at all.
+- **It says what it is doing.** Subsystem `Slate`, a category per area, and a
+  line at every point this package returns `nil` rather than guessing — which is
+  the shape almost every bug here takes. Catalogue ids and counts are `.public`;
+  a search query or a title is `.private`; a credential is in no log line at any
+  level, and a test fails the build if one appears.
 - **Responses are remembered for the life of the process**, never written to
   disk. Staleness is then bounded by how long the app runs, which needs no
   eviction policy and cannot be wrong after a restart.

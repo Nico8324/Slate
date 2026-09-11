@@ -33,7 +33,14 @@ public struct AniListProvider: MetadataProvider, Sendable {
         // turns a broadcast id into an AniList one and the aggregator asks
         // again in a later round. Without it in the providers, an id-only
         // lookup reaches this and there is nothing to ask.
-        guard lookup.ids.aniList != nil || lookup.query != nil else { return nil }
+        guard lookup.ids.aniList != nil || lookup.query != nil else {
+            // The gap that made an id-only lookup silently romaji-less before
+            // AnimeIDBridge existed, and still does when it is not wired.
+            Log.aniList.debug(
+                "no AniList id and no name — AniList numbers the work, not the broadcast, so there is nothing to ask. Wire AnimeIDBridge to reach it from a broadcast id"
+            )
+            return nil
+        }
 
         let body = try JSONEncoder().encode(Request(
             query: Self.query,
@@ -46,9 +53,16 @@ public struct AniListProvider: MetadataProvider, Sendable {
                                              headers: ["Accept": "application/json"],
                                              body: body).data?.Page?.media ?? []
         } catch SlateError.http(let status, _) where status == 404 {
+            Log.aniList.debug("404 — no such anime. Not a failure")
             return nil // AniList reports "no such anime" as a 404. Not a failure.
         }
-        guard let media = pick(from: candidates, lookup: lookup) else { return nil }
+        guard let media = pick(from: candidates, lookup: lookup) else {
+            Log.aniList.notice(
+                "\(candidates.count, privacy: .public) candidates, none of them a plausible match for the requested name"
+            )
+            return nil
+        }
+        Log.aniList.debug("matched anilist \(media.id, privacy: .public)")
         return snapshot(from: media)
     }
 
@@ -67,6 +81,11 @@ public struct AniListProvider: MetadataProvider, Sendable {
             $0.allNames.contains { $0.normalizedForMatching == asked }
         }
         guard !sameTitle.isEmpty else { return eligible.first }
+        if sameTitle.count > 1 {
+            Log.aniList.notice(
+                "\(sameTitle.count, privacy: .public) entries carry the asked-for title exactly — taking the most popular"
+            )
+        }
         return sameTitle.max { ($0.popularity ?? 0) < ($1.popularity ?? 0) }
     }
 

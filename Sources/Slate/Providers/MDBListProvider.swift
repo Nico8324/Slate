@@ -29,12 +29,18 @@ public actor MDBListProvider: MetadataProvider {
     }
 
     public func updateAPIKey(_ apiKey: String) {
+        Log.mdbList.notice("api key rotated")
         self.apiKey = apiKey
     }
 
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
         guard !apiKey.isEmpty else { throw SlateError.missingCredential(.mdbList) }
-        guard let route = Self.route(for: lookup) else { return nil }
+        guard let route = Self.route(for: lookup) else {
+            // MDBList resolves by id and has no title search, so it stays silent
+            // on a lookup by name until another provider supplies one.
+            Log.mdbList.debug("no id to resolve by yet — waiting for another provider to supply one")
+            return nil
+        }
 
         let payload = try await http.json(
             Media.self,
@@ -42,7 +48,11 @@ public actor MDBListProvider: MetadataProvider {
             headers: ["Authorization": "Bearer \(apiKey)", "Accept": "application/json"]
         )
         let ratings = payload.ratings?.compactMap(\.rating) ?? []
-        guard !ratings.isEmpty || payload.imdb_id != nil else { return nil }
+        guard !ratings.isEmpty || payload.imdb_id != nil else {
+            Log.mdbList.notice("\(Log.describe(lookup.ids), privacy: .public) — answered, but with no ratings and no ids")
+            return nil
+        }
+        Log.mdbList.debug("\(ratings.count, privacy: .public) ratings")
 
         return Snapshot(
             ids: Identifiers(imdb: payload.imdb_id?.nilIfEmpty),

@@ -45,6 +45,9 @@ public struct MetadataAggregator: Sendable {
     /// ``TitleMetadata/failures`` and the rest still answer. A result where no
     /// provider matched is an empty ``TitleMetadata``, not an error.
     public func metadata(for lookup: Lookup) async -> TitleMetadata {
+        Log.aggregator.notice(
+            "lookup \(Log.describe(lookup), privacy: .public) across \(self.providers.count, privacy: .public) providers"
+        )
         var (snapshots, failures) = await ask(providers, lookup)
         var result = assemble(snapshots, failures: failures)
         var asked = lookup
@@ -55,7 +58,7 @@ public struct MetadataAggregator: Sendable {
         // round can unlock the next: TMDB finds the IMDb id, the bridge turns it
         // into a MyAnimeList id, and MDBList can then be asked for MyAnimeList's
         // score. Bounded, and it stops the moment a round learns nothing.
-        for _ in 0..<Self.resolutionRounds {
+        for round in 0..<Self.resolutionRounds {
             let silent = providers.filter {
                 snapshots[$0.provider] == nil && failures[$0.provider] == nil
             }
@@ -69,7 +72,23 @@ public struct MetadataAggregator: Sendable {
             snapshots.merge(late) { first, _ in first }
             failures.merge(lateFailures) { first, _ in first }
             result = assemble(snapshots, failures: failures)
+            Log.aggregator.debug(
+                "round \(round + 2, privacy: .public) asked \(silent.map(\.provider.rawValue).sorted().joined(separator: ","), privacy: .public) with the ids learned so far"
+            )
         }
+        // The one line that answers "why is this field missing" without a
+        // debugger: who answered, who was asked and failed, and who was in the
+        // list but said nothing at all.
+        let silentThroughout = providers.map(\.provider)
+            .filter { snapshots[$0] == nil && failures[$0] == nil }
+        Log.aggregator.notice(
+            """
+            \(Log.describe(lookup), privacy: .public) → \
+            answered: \(snapshots.keys.map(\.rawValue).sorted().joined(separator: ",").nilIfEmpty ?? "none", privacy: .public); \
+            failed: \(failures.keys.map(\.rawValue).sorted().joined(separator: ",").nilIfEmpty ?? "none", privacy: .public); \
+            no match: \(silentThroughout.map(\.rawValue).sorted().joined(separator: ",").nilIfEmpty ?? "none", privacy: .public)
+            """
+        )
         return result
     }
 
@@ -92,8 +111,19 @@ public struct MetadataAggregator: Sendable {
             }
             for await (provider, result) in group {
                 switch result {
-                case .success(let snapshot): snapshots[provider] = snapshot
-                case .failure(let error): failures[provider] = String(describing: error)
+                case .success(let snapshot):
+                    snapshots[provider] = snapshot
+                    if snapshot == nil {
+                        // Not a failure. AniList returns this for every western
+                        // title, and it is the state that looks identical to a
+                        // provider that was never asked.
+                        Log.aggregator.debug("\(provider.rawValue, privacy: .public) — no match")
+                    }
+                case .failure(let error):
+                    failures[provider] = String(describing: error)
+                    Log.aggregator.error(
+                        "\(provider.rawValue, privacy: .public) failed — \(String(describing: error), privacy: .public)"
+                    )
                 }
             }
         }
@@ -118,9 +148,19 @@ public struct MetadataAggregator: Sendable {
     /// question and several requests more expensive. A caller asking *what is
     /// this* should not pay for episode lists it did not ask for.
     public func seasons(for ids: Identifiers) async -> SeasonStructure? {
-        for provider in providers.compactMap({ $0 as? TMDBProvider }) {
+        let capable = providers.compactMap { $0 as? TMDBProvider }
+        guard !capable.isEmpty else {
+            // The inert-wiring case: providers were supplied, none of them was a
+            // TMDBProvider, and without this the caller sees only nil.
+            Log.seasons.error(
+                "no TMDBProvider among \(self.providers.count, privacy: .public) providers — seasons are TMDB-only, so this can only return nil"
+            )
+            return nil
+        }
+        for provider in capable {
             if let structure = try? await provider.seasons(for: ids) { return structure }
         }
+        Log.seasons.notice("no season structure for \(Log.describe(ids), privacy: .public)")
         return nil
     }
 
@@ -142,6 +182,11 @@ public struct MetadataAggregator: Sendable {
     ///   posters for Thousand-Year Blood War.
     public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async -> ArtworkSet {
         let capable = providers.compactMap { $0 as? any ArtworkProvider }
+        if capable.isEmpty {
+            Log.artwork.error(
+                "no artwork-capable provider among \(self.providers.count, privacy: .public) — this can only return an empty set"
+            )
+        }
         var byProvider: [Provider: ArtworkSet] = [:]
         var failures: [Provider: String] = [:]
 
@@ -164,6 +209,15 @@ public struct MetadataAggregator: Sendable {
         for provider in byProvider.keys.sorted(by: { rank($0) < rank($1) }) {
             if let set = byProvider[provider] { merged.merge(set) }
         }
+        Log.artwork.notice(
+            """
+            \(Log.describe(ids), privacy: .public)\
+            \(nativeSeason.map { " season \($0)" } ?? "", privacy: .public) — \
+            \(merged.posters.count, privacy: .public) posters, \
+            \(merged.backdrops.count, privacy: .public) backdrops, \
+            \(merged.logos.count, privacy: .public) logos
+            """
+        )
         return merged
     }
 

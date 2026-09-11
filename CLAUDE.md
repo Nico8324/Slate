@@ -64,7 +64,7 @@ a path does not.
 
 ```bash
 swift build
-swift test          # 95 tests, no network — TMDB paths use StubURLProtocol
+swift test          # 99 tests, no network — TMDB paths use StubURLProtocol
 ```
 
 Live checks against the real APIs need a TMDB v4 read token, which is not in

@@ -35,6 +35,7 @@ extension TMDBProvider: ArtworkProvider {
             path = "/tv/\(id)/images"
         }
 
+        Log.artwork.debug("fetching \(path, privacy: .public)")
         let payload = try await http.json(Images.self,
                                           url: try URL.build(Self.api, path: path),
                                           headers: headers)
