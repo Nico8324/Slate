@@ -6,6 +6,14 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-09-19
+
+### Fixed
+
+- **A page past TMDB's last (500) is empty rather than an error**, for `candidates(for:)`,
+  `titles(in:)` and `searchPeople(_:)` — an infinite scroll used to end on a thrown request.
+  `TMDBProvider.lastPage` names the limit.
+
 ## [0.12.0] — 2026-09-19
 
 ### Fixed

@@ -141,4 +141,10 @@ extension TMDBRequestTests {
         let show = Candidate(ids: Identifiers(tmdb: 7), kind: .series, title: "A", provider: .tmdb)
         #expect(film.id != show.id)
     }
+
+    @Test func pagesPastTMDBsLastAreEmptyNotAnError() async throws {
+        let tmdb = TMDBProvider(accessToken: "t")
+        #expect(try await tmdb.titles(in: .popularMovies, page: 501).isEmpty)
+        #expect(try await tmdb.candidates(for: "x", page: 0).isEmpty)
+    }
 }

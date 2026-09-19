@@ -26,9 +26,9 @@ its date and commits, and an area comes due again when the code under it has cha
 |---|---|---|---|
 | 2026-09-19 | Aggregation and HTTP | `16f3342` | — |
 | 2026-09-19 | Ratings | `16f3342` | — |
-| 2026-09-19 | Seasons and episode groups | `f98a7fe` | TMDB's `order` semantics unconfirmed against live groups; Cinema should use `absoluteRange(ofSeason:)` in `ShowSeasons` |
-| 2026-09-19 | Anime ids and AniList | `f98a7fe` | Cinema builds two `AniListProvider`s (two limiters) and never passes `Lookup.season` |
-| 2026-09-19 | Browsing and artwork | `16f3342`, `f98a7fe` | `candidates`/`titles` don't return `total_pages` (TMDB errors past page 500) |
+| 2026-09-19 | Seasons and episode groups | `f98a7fe`; Cinema `8bcabf8` | — (groups are numbered 1…n whatever TMDB's `order` holds, so its exact semantics no longer matter) |
+| 2026-09-19 | Anime ids and AniList | `f98a7fe`; Cinema `8bcabf8` | — (Cinema's anime requests carry an absolute episode and no season, so `Lookup.season` has nothing to pass; a shared IMDb id falls back to the name search by design) |
+| 2026-09-19 | Browsing and artwork | `16f3342`, `f98a7fe`, 0.12.1 | — |
 
 ## Areas
 
@@ -79,4 +79,5 @@ confirming none of it came back.
 **Last swept:** 2026-09-19
 
 - [ ] Lists hold each title once; `Candidate.id` is unique across kinds.
+- [ ] Paging stops at `TMDBProvider.lastPage` with an empty page, not an error.
 - [ ] Artwork prefers the requested locale's language, then no-language, then anything.

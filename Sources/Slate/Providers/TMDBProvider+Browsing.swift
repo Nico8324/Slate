@@ -15,7 +15,12 @@ extension TMDBProvider {
     /// title is unambiguous and wrong when a person should choose. "Dragon Ball"
     /// resolved to Dragon Ball Z for as long as nobody could see the
     /// alternatives.
+    /// The last page TMDB serves; past it the API answers with an error, not an
+    /// empty page, which ended an infinite scroll on a thrown request.
+    public static let lastPage = 500
+
     public func candidates(for query: String, kind: Kind? = nil, page: Int = 1) async throws -> [Candidate] {
+        guard (1...Self.lastPage).contains(page) else { return [] }
         let path = switch kind {
         case .movie: "/search/movie"
         case .series: "/search/tv"
@@ -27,7 +32,8 @@ extension TMDBProvider {
 
     /// One of TMDB's published lists.
     public func titles(in list: TitleList, page: Int = 1) async throws -> [Candidate] {
-        try await candidates(path: list.path, kind: list.kind, query: ["page": String(page)])
+        guard (1...Self.lastPage).contains(page) else { return [] }
+        return try await candidates(path: list.path, kind: list.kind, query: ["page": String(page)])
     }
 
     /// Everything a person is credited in, most recent first.
@@ -66,6 +72,7 @@ extension TMDBProvider {
     }
 
     public func searchPeople(_ query: String, page: Int = 1) async throws -> [Person] {
+        guard (1...Self.lastPage).contains(page) else { return [] }
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
         let url = try URL.build(Self.api, path: "/search/person",
                                 query: ["query": query, "page": String(page), "language": language])
