@@ -23,7 +23,7 @@ public struct AniListProvider: MetadataProvider, Sendable {
         // is the difference between a library scan finishing and a wall of 429s
         // that reads as the provider being down.
         self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 1.4),
-                         cache: ResponseCache())
+                         cache: ResponseCache(), provider: .aniList)
     }
 
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {

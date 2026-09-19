@@ -4,6 +4,27 @@ All notable changes to Slate. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **MDBList scores on the right scale.** A site's own 0–100 `score` decides the value where
+  MDBList gives one; the fallback table now knows Trakt, TMDB and Popcornmeter (percentages),
+  Roger Ebert (out of 4) and Metacritic users (out of 10). Trakt's 85 had come out as 85 out of 10,
+  and Metacritic users' 8.9 as 0.89.
+- **`seasons(for:)` says why it failed.** A rejected token, a rate limit or a decode failure is
+  logged as an error rather than read as "no season structure".
+- **A server failing with 5xx on every attempt throws `.http`**, not `.rateLimited` — the case
+  documented as "slow down" rather than "this will never work".
+- **A 429 pauses every request through the same provider**, not only the one that received it, and
+  `Retry-After` is read in its HTTP-date form too and honoured up to 60 s (AniList's window) rather
+  than 30.
+- **Later lookup rounds carry the kind earlier rounds learned**, so MDBList is asked
+  `/tmdb/movie/…` or `/tmdb/show/…` rather than `/tmdb/any/…` for an id that names both.
+- **A key the provider rejects (401/403) is `.missingCredential`**, as the case is documented.
+- **`ArtworkSet.best(_:preferring:)` matches a locale to its language**, so `en-US` prefers `en`
+  images instead of ranking them below textless ones.
+
 ## [0.11.0] — 2026-09-11
 
 Logging, everywhere a decision is made. **Minor rather than patch**: no

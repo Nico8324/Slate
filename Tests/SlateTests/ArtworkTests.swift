@@ -23,6 +23,13 @@ struct ArtworkChoiceTests {
         #expect(set.best(.poster, preferring: ["ja"])?.language == "ja")
     }
 
+    /// Images are tagged `en`; a caller passing a locale like the provider's own `en-US` must
+    /// still get its language first.
+    @Test func aLocaleMatchesItsLanguage() {
+        let set = ArtworkSet(posters: [art(.poster, "ja", rating: 9), art(.poster, "en", rating: 4)])
+        #expect(set.best(.poster, preferring: ["en-US"])?.language == "en")
+    }
+
     @Test func aTextlessPosterBeatsOneInALanguageNobodyAskedFor() {
         let set = ArtworkSet(posters: [art(.poster, "de", rating: 9), art(.poster, nil, rating: 2)])
 
@@ -85,5 +92,25 @@ struct ArtworkChoiceTests {
 
         #expect(set.posters.count == 2)
         #expect(set.backdrops.count == 1)
+    }
+}
+
+struct RetryAfterTests {
+    private func response(_ value: String) -> HTTPURLResponse {
+        HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 429,
+                        httpVersion: nil, headerFields: ["Retry-After": value])!
+    }
+
+    /// Both forms the header allows; the date one used to be ignored.
+    @Test func secondsAndDatesAreBothRead() {
+        #expect(HTTP.retryAfter(response("12")) == 12)
+        let inTwenty = Date().addingTimeInterval(20)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        let parsed = HTTP.retryAfter(response(formatter.string(from: inTwenty)))
+        #expect(parsed.map { (15...21).contains($0) } == true)
+        #expect(HTTP.retryAfter(response("600")) == 60)
     }
 }

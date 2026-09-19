@@ -36,6 +36,26 @@ extension TMDBRequestTests {
         #expect(ratings.first { $0.source == "imdb" }?.votes == 2000000)
     }
 
+    /// Trakt and TMDB send percentages and Metacritic's users score out of ten; a table that
+    /// assumed ten for everything unlisted read Trakt's 85 as 85 out of 10.
+    @Test func sitesOutsideTheOldTableLandOnTheirOwnScales() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/imdb/movie/tt0133094", json: """
+        {"imdb_id":"tt0133094","title":"X","type":"movie",
+         "ratings":[{"source":"trakt","value":85},
+                    {"source":"metacriticuser","value":8.9},
+                    {"source":"rogerebert","value":4},
+                    {"source":"tmdb","value":70,"score":70}]}
+        """)
+        let snapshot = try #require(await mdbList().snapshot(for: Lookup(imdbID: "tt0133094", kind: .movie)))
+        let ratings = try #require(snapshot.ratings)
+        #expect(ratings.first { $0.source == "trakt" }?.value == 8.5)
+        #expect(ratings.first { $0.source == "metacriticuser" }?.value == 8.9)
+        #expect(ratings.first { $0.source == "rogerebert" }?.value == 10)
+        #expect(ratings.first { $0.source == "tmdb" }?.value == 7)
+        #expect(ratings.allSatisfy { $0.value <= 10 })
+    }
+
     @Test func theBlendedScoreIsNotReportedAsARating() async throws {
         // MDBList's own `score` is an average of the sites it lists. Reporting
         // it would put an average where a source belongs.

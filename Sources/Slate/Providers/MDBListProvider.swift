@@ -25,7 +25,7 @@ public actor MDBListProvider: MetadataProvider {
     public init(apiKey: String, session: URLSession = .shared) {
         self.apiKey = apiKey
         self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 5),
-                         cache: ResponseCache())
+                         cache: ResponseCache(), provider: .mdbList)
     }
 
     public func updateAPIKey(_ apiKey: String) {
@@ -98,15 +98,25 @@ public actor MDBListProvider: MetadataProvider {
             /// applies: Metacritic is out of 100, Letterboxd out of 5, IMDb out
             /// of 10. Guessing from the magnitude would read a 4.5 IMDb score as
             /// a Letterboxd one.
+            ///
+            /// MDBList's own 0...100 `score` decides the value where it is given — it is the one
+            /// number that is on a known scale for every source. The table covers what is left:
+            /// Trakt, TMDB and Popcornmeter send percentages, Roger Ebert stars out of four, and
+            /// Metacritic's user score is out of ten, not a hundred — a table that knew six
+            /// sources read Trakt's 85 as eighty-five out of ten and Metacritic users' 8.9 as 0.89.
             var rating: Rating? {
                 guard let source = source?.nilIfEmpty else { return nil }
                 let outOf: Double = switch source {
-                case "metacritic", "metacriticuser", "tomatoes", "tomatoesaudience", "audience": 100
+                case "metacritic", "tomatoes", "tomatoesaudience", "audience", "popcorn", "trakt", "tmdb": 100
                 case "letterboxd": 5
+                case "rogerebert": 4
                 default: 10
                 }
-                guard let native = value ?? score.map({ $0 / 100 * outOf }), native > 0 else { return nil }
-                return Rating(source: source, value: native / outOf * 10, outOf: outOf, votes: votes)
+                if let score, score > 0 {
+                    return Rating(source: source, value: min(score, 100) / 10, outOf: outOf, votes: votes)
+                }
+                guard let native = value, native > 0 else { return nil }
+                return Rating(source: source, value: min(native / outOf * 10, 10), outOf: outOf, votes: votes)
             }
         }
     }

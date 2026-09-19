@@ -21,6 +21,14 @@ public enum SlateError: Error, Sendable, Equatable {
 actor RateLimiter {
     private let interval: Duration
     private var nextTurn: ContinuousClock.Instant?
+    private var pausedUntil: ContinuousClock.Instant?
+
+    /// Holds every caller until `instant` — a 429 is about the client, not the one request that
+    /// happened to receive it, and the requests already queued would otherwise each run into the
+    /// same wall and spend their attempts on it.
+    func pause(until instant: ContinuousClock.Instant) {
+        pausedUntil = max(pausedUntil ?? instant, instant)
+    }
 
     init(requestsPerSecond: Double) {
         self.interval = .seconds(1 / max(requestsPerSecond, 0.01))
@@ -30,7 +38,7 @@ actor RateLimiter {
     /// a burst is spread rather than dropped.
     func waitForTurn() async {
         let now = ContinuousClock.now
-        let start = max(now, nextTurn ?? now)
+        let start = max(now, nextTurn ?? now, pausedUntil ?? now)
         nextTurn = start.advanced(by: interval)
         if start > now {
             try? await Task.sleep(until: start, clock: .continuous)
@@ -78,6 +86,9 @@ struct HTTP: Sendable {
     /// Total tries, not retries. Three is enough for a transient 429 or a 502
     /// and short enough that a genuinely broken provider fails quickly.
     var attempts: Int = 3
+    /// Who is being asked, so a rejected key can be reported as the credential problem it is
+    /// rather than as a bare 401.
+    var provider: Provider?
 
     func json<Response: Decodable>(
         _ type: Response.Type,
@@ -104,6 +115,8 @@ struct HTTP: Sendable {
         }
 
         var lastRetryAfter: TimeInterval?
+        var lastStatus = 0
+        var lastBody = Data()
 
         let started = ContinuousClock.now
         for attempt in 1...max(attempts, 1) {
@@ -122,6 +135,11 @@ struct HTTP: Sendable {
             if http.statusCode == 429 || (500..<600).contains(http.statusCode) {
                 let retryAfter = Self.retryAfter(http)
                 lastRetryAfter = retryAfter
+                lastStatus = http.statusCode
+                lastBody = data
+                if http.statusCode == 429 {
+                    await limiter?.pause(until: .now.advanced(by: .seconds(retryAfter ?? Self.backoff(attempt))))
+                }
                 guard attempt < attempts else {
                     Log.http.error(
                         "\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public) on the last of \(max(self.attempts, 1), privacy: .public) attempts, giving up"
@@ -135,6 +153,10 @@ struct HTTP: Sendable {
                 // window resets and guessing shorter just burns the next attempt.
                 try? await Task.sleep(for: .seconds(retryAfter ?? Self.backoff(attempt)))
                 continue
+            }
+            if [401, 403].contains(http.statusCode), let provider {
+                Log.http.error("\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public), the credential was refused")
+                throw SlateError.missingCredential(provider)
             }
             guard (200..<300).contains(http.statusCode) else {
                 Log.http.error(
@@ -164,18 +186,35 @@ struct HTTP: Sendable {
             await cache?.store(data, for: key)
             return decoded
         }
+        // Rate limited only if that is what the last answer was. A server failing with 5xx on
+        // every attempt is "this is broken", which callers treat differently from "slow down".
+        guard lastStatus == 429 else {
+            Log.http.error("\(endpoint, privacy: .public) — HTTP \(lastStatus, privacy: .public) on every attempt")
+            throw SlateError.http(status: lastStatus, body: String(decoding: lastBody.prefix(512), as: UTF8.self))
+        }
         Log.http.error("\(endpoint, privacy: .public) — still rate limited after every attempt")
         throw SlateError.rateLimited(retryAfter: lastRetryAfter)
     }
 
     static func retryAfter(_ response: HTTPURLResponse) -> TimeInterval? {
-        guard let value = response.value(forHTTPHeaderField: "Retry-After"),
-              let seconds = TimeInterval(value.trimmingCharacters(in: .whitespaces))
-        else { return nil }
-        // A server having a bad day can ask for minutes; waiting that long inside
-        // one lookup is worse than reporting it and letting the caller decide.
-        return min(seconds, 30)
+        guard let value = response.value(forHTTPHeaderField: "Retry-After")?
+                .trimmingCharacters(in: .whitespaces) else { return nil }
+        // Seconds, or an HTTP date — both are allowed, and the date form fell back to guessing.
+        let seconds = TimeInterval(value) ?? httpDate.date(from: value).map { $0.timeIntervalSinceNow }
+        guard let seconds else { return nil }
+        // A server having a bad day can ask for minutes; waiting that long inside one lookup is
+        // worse than reporting it. Sixty, not thirty: AniList's window is a minute, and a retry
+        // sent before it resets only spends the attempt.
+        return min(max(seconds, 0), 60)
     }
+
+    private static let httpDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return formatter
+    }()
 
     static func backoff(_ attempt: Int) -> TimeInterval {
         min(pow(2, Double(attempt - 1)), 8)

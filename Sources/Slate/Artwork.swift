@@ -93,7 +93,10 @@ public struct ArtworkSet: Sendable, Equatable {
     }
 
     /// Lower sorts first.
-    private func tier(_ artwork: Artwork, kind: ArtworkKind, languages: [String]) -> Int {
+    private func tier(_ artwork: Artwork, kind: ArtworkKind, languages requested: [String]) -> Int {
+        // By language, not by locale: images are tagged `en`, and a caller passing the provider's
+        // own `en-US` ranked every poster in its language below the textless ones.
+        let languages = requested.map { $0.split(separator: "-").first.map(String.init) ?? $0 }
         if kind == .backdrop || kind == .still {
             return artwork.isTextless ? 0 : (languages.contains(artwork.language ?? "") ? 1 : 2)
         }

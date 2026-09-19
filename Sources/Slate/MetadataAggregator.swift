@@ -64,7 +64,11 @@ public struct MetadataAggregator: Sendable {
             }
             var next = asked
             next.ids.fill(from: result.ids)
-            guard !silent.isEmpty, next.ids != asked.ids else { break }
+            // The kind too: a TMDB id names a film or a show depending on which it is, and a
+            // provider asked by one with no kind (MDBList's `/tmdb/any/`) could answer about
+            // the other.
+            next.kind = next.kind ?? result.kind.best
+            guard !silent.isEmpty, next.ids != asked.ids || next.kind != asked.kind else { break }
             asked = next
 
             let (late, lateFailures) = await ask(silent, asked)
@@ -158,7 +162,15 @@ public struct MetadataAggregator: Sendable {
             return nil
         }
         for provider in capable {
-            if let structure = try? await provider.seasons(for: ids) { return structure }
+            do {
+                if let structure = try await provider.seasons(for: ids) { return structure }
+            } catch {
+                // Said as a failure, not folded into "no structure": a rejected token, a rate
+                // limit and a decode failure all used to read as a show that has no seasons.
+                Log.seasons.error(
+                    "season structure for \(Log.describe(ids), privacy: .public) failed: \(String(describing: error), privacy: .public)"
+                )
+            }
         }
         Log.seasons.notice("no season structure for \(Log.describe(ids), privacy: .public)")
         return nil

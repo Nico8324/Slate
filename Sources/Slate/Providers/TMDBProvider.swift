@@ -50,7 +50,7 @@ public actor TMDBProvider: MetadataProvider {
         // TMDB is generous, but a library scan is thousands of requests and
         // there is no reason to be the loudest client on the server.
         self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 20),
-                         cache: ResponseCache())
+                         cache: ResponseCache(), provider: .tmdb)
     }
 
     /// Rotate the token in place. Slate never persists it.
