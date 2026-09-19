@@ -13,7 +13,9 @@ public struct Candidate: Sendable, Equatable, Identifiable {
     public let posterURL: URL?
     public let provider: Provider
 
-    public var id: String { "\(provider.rawValue)-\(ids.tmdb ?? ids.aniList ?? 0)" }
+    /// With the kind: TMDB numbers films and shows separately, and a film and
+    /// a show sharing a number in one search result had the same id.
+    public var id: String { "\(provider.rawValue)-\(kind.rawValue)-\(ids.tmdb ?? ids.aniList ?? 0)" }
 
     public init(
         ids: Identifiers, kind: Kind, title: String, year: Int? = nil,

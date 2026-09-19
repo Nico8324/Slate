@@ -70,7 +70,8 @@ extension TMDBProvider {
 
     private func resolveSeasons(showID: Int) async throws -> SeasonStructure? {
         let page = try await http.json(ShowPage.self,
-                                       url: try URL.build(Self.api, path: "/tv/\(showID)"),
+                                       url: try URL.build(Self.api, path: "/tv/\(showID)",
+                                                          query: ["language": language]),
                                        headers: headers)
         let native = page.seasons?.map {
             Season(number: $0.season_number, name: $0.name?.nilIfEmpty, episodeCount: $0.episode_count ?? 0)
@@ -88,17 +89,36 @@ extension TMDBProvider {
             "tmdb \(showID, privacy: .public) — looks flattened (longest season \(native.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0, privacy: .public) episodes), looking for an episode group"
         )
 
+        // A failure from here on costs the correction, not the seasons: TMDB's
+        // own are in hand, and one null in a community group — or a 429 —
+        // used to take the whole show's structure with it, on every lookup.
+        do {
+            return try await corrected(showID: showID, native: native) ?? plain
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Log.seasons.error(
+                "tmdb \(showID, privacy: .public) — episode groups unavailable (\(error.localizedDescription, privacy: .public)); using TMDB's own seasons"
+            )
+            return plain
+        }
+    }
+
+    /// The episode-group ordering to use instead of TMDB's own seasons, or
+    /// `nil` when none qualifies.
+    private func corrected(showID: Int, native: [Season]) async throws -> SeasonStructure? {
         let total = native.filter { $0.number > 0 }.reduce(0) { $0 + $1.episodeCount }
         let summaries = try await http.json(
             EpisodeGroupsResponse.self,
-            url: try URL.build(Self.api, path: "/tv/\(showID)/episode_groups"),
+            url: try URL.build(Self.api, path: "/tv/\(showID)/episode_groups",
+                               query: ["language": language]),
             headers: headers
         ).results
         guard let chosen = Self.preferredGroup(among: summaries, coveringAtLeast: total) else {
             Log.seasons.notice(
                 "tmdb \(showID, privacy: .public) — \(summaries.count, privacy: .public) episode groups, none eligible (need >1 group covering all \(total, privacy: .public) episodes, and never a story-arc cut). Leaving TMDB's own seasons"
             )
-            return plain
+            return nil
         }
         Log.seasons.notice(
             "tmdb \(showID, privacy: .public) — chose group \"\(chosen.name, privacy: .public)\" (\(chosen.group_count, privacy: .public) groups, \(chosen.episode_count, privacy: .public) episodes)"
@@ -106,7 +126,8 @@ extension TMDBProvider {
 
         let group = try await http.json(
             EpisodeGroupPayload.self,
-            url: try URL.build(Self.api, path: "/tv/episode_group/\(chosen.id)"),
+            url: try URL.build(Self.api, path: "/tv/episode_group/\(chosen.id)",
+                               query: ["language": language]),
             headers: headers
         )
         let seasons = Self.seasons(from: group)
@@ -117,7 +138,7 @@ extension TMDBProvider {
             Log.seasons.notice(
                 "tmdb \(showID, privacy: .public) — group \"\(group.name, privacy: .public)\" divides into nothing, rejecting it rather than swapping one flat season for another"
             )
-            return plain
+            return nil
         }
 
         // Nor is one that leaves the long run standing and files extras beside
@@ -134,7 +155,7 @@ extension TMDBProvider {
             Log.seasons.notice(
                 "tmdb \(showID, privacy: .public) — group \"\(group.name, privacy: .public)\" leaves a \(biggestNow, privacy: .public)-episode season against \(flattest, privacy: .public) native; it has not broken the run up, rejecting"
             )
-            return plain
+            return nil
         }
 
         Log.seasons.notice(
@@ -231,18 +252,25 @@ extension TMDBProvider {
 
     /// Reads an ordering into seasons.
     ///
-    /// Entries whose `order` is `0` are TMDB's specials and keep season 0 rather
-    /// than being renumbered into the run — filing four specials as "season one"
-    /// would push every real season along by one.
+    /// Specials keep season 0 rather than being renumbered into the run —
+    /// filing four specials as "season one" would push every real season along
+    /// by one. A group is specials when every episode in it is one of TMDB's
+    /// season-0 episodes; the rest are numbered 1, 2, 3… in `order`. Taking
+    /// `order` itself as the number dropped a community group's first arc
+    /// numbered 0 into specials, and gave two groups sharing an order one id.
     static func seasons(from group: EpisodeGroupPayload) -> [Season] {
-        group.groups.sorted { $0.order < $1.order }.map { entry in
-            Season(
-                number: entry.order,
+        var next = 0
+        return group.groups.sorted { $0.order < $1.order }.map { entry in
+            let isSpecials = !entry.episodes.isEmpty && entry.episodes.allSatisfy { $0.season_number == 0 }
+            let number: Int
+            if isSpecials { number = 0 } else { next += 1; number = next }
+            return Season(
+                number: number,
                 name: entry.name.nilIfEmpty,
                 episodeCount: entry.episodes.count,
                 episodes: entry.episodes.enumerated().map { index, episode in
                     Episode(
-                        season: entry.order,
+                        season: number,
                         number: index + 1,
                         title: episode.name?.nilIfEmpty,
                         airDate: episode.air_date?.asReleaseDate,

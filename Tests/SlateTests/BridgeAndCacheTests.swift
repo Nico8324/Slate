@@ -126,4 +126,19 @@ extension TMDBRequestTests {
         #expect(StubURLProtocol.requested.count == 2)
     }
   }
+
+    @Test func aFilmAndAShowSharingATMDBNumberAreKeptApart() async throws {
+        let bridge = AnimeIDBridge()
+        await bridge.index(try JSONDecoder().decode([AnimeIDBridge.Entry].self, from: Data(#"[{"anilist_id":1,"themoviedb_id":{"tv":500}},{"anilist_id":2,"themoviedb_id":{"movie":500}}]"#.utf8)))
+        let show = try await bridge.snapshot(for: Lookup(ids: Identifiers(tmdb: 500), kind: .series))
+        let film = try await bridge.snapshot(for: Lookup(ids: Identifiers(tmdb: 500), kind: .movie))
+        #expect(show?.ids.aniList == 1)
+        #expect(film?.ids.aniList == 2)
+    }
+
+    @Test func aCandidateIDCarriesItsKind() {
+        let film = Candidate(ids: Identifiers(tmdb: 7), kind: .movie, title: "A", provider: .tmdb)
+        let show = Candidate(ids: Identifiers(tmdb: 7), kind: .series, title: "A", provider: .tmdb)
+        #expect(film.id != show.id)
+    }
 }

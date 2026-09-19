@@ -24,6 +24,27 @@ All notable changes to Slate. Format follows
 - **A key the provider rejects (401/403) is `.missingCredential`**, as the case is documented.
 - **`ArtworkSet.best(_:preferring:)` matches a locale to its language**, so `en-US` prefers `en`
   images instead of ranking them below textless ones.
+- **A failed episode-group request keeps TMDB's own seasons**: one null in a community group or a
+  429 on `/episode_groups` used to make `seasons(for:)` nil for that show on every lookup.
+- **`position(ofAbsolute:)` reads a corrected show through TMDB's own numbering**, as the rest of
+  the structure does, so a group holding a special or a doubled recap no longer files an absolute
+  number one episode off.
+- **`nativeRange(ofSeason:)` refuses a range with a repeated episode**, which passed as complete
+  while missing one.
+- **Episode groups are numbered 1, 2, 3… in order**, with season 0 only for a group of TMDB
+  specials — a first arc ordered 0 was filed as specials, and two groups sharing an order shared an id.
+- **Season and arc names come back in the provider's language** (`language` on `/tv/{id}` and the
+  episode-group requests).
+- **The anime id map keeps TMDB film and show ids apart**, decodes row by row so one bad row no
+  longer disables it, and narrows a shared id by TMDB's season number before TheTVDB's.
+- **A filmography lists each title once**, not once per crew job, and **`Candidate.id` includes the
+  kind**, so a film and a show sharing a TMDB number no longer collide.
+
+### Added
+
+- `SeasonStructure.absoluteRange(ofSeason:)` — a shown season's absolute episode numbers. Use it
+  instead of `nativeRange(ofSeason:)?.episodes` when asking an indexer: those restart in each of
+  the provider's seasons.
 
 ## [0.11.0] — 2026-09-11
 

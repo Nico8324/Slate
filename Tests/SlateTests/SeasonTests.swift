@@ -257,3 +257,55 @@ struct SeasonStructureTests {
         #expect(structure.nativeRange(ofSeason: 1) == nil)
     }
 }
+
+/// The 2026-09-19 bug hunt's seasons findings.
+struct SeasonBugHuntTests {
+    private func structure(_ groups: String, native: [Season]) throws -> SeasonStructure {
+        let group = try JSONDecoder().decode(
+            TMDBProvider.EpisodeGroupPayload.self,
+            from: Data(#"{"id":"g","name":"TVDB Order","groups":[\#(groups)]}"#.utf8)
+        )
+        return SeasonStructure(seasons: TMDBProvider.seasons(from: group), orderingName: group.name,
+                               nativeSeasons: native, provider: .tmdb)
+    }
+
+    private func episodes(_ season: Int, _ range: ClosedRange<Int>) -> String {
+        range.map { #"{"season_number":\#(season),"episode_number":\#($0)}"# }.joined(separator: ",")
+    }
+
+    @Test func anArcInTheSecondNativeSeasonHasAbsoluteNumbersPastTheFirst() throws {
+        let tybw = try structure(
+            #"{"order":1,"name":"A","episodes":[\#(episodes(1, 1...366))]},{"order":2,"name":"TYBW","episodes":[\#(episodes(2, 1...13))]}"#,
+            native: [Season(number: 1, episodeCount: 366), Season(number: 2, episodeCount: 13)]
+        )
+        #expect(tybw.nativeRange(ofSeason: 2)?.episodes == 1...13)
+        #expect(tybw.absoluteRange(ofSeason: 2) == 367...379)
+        #expect(tybw.absoluteRange(ofSeason: 1) == 1...366)
+    }
+
+    @Test func aGroupOrderedFromZeroIsNotSpecials() throws {
+        let s = try structure(
+            #"{"order":0,"name":"First arc","episodes":[\#(episodes(1, 1...3))]},{"order":1,"name":"Second","episodes":[\#(episodes(1, 4...6))]}"#,
+            native: [Season(number: 1, episodeCount: 6)]
+        )
+        #expect(s.numberedSeasons.map(\.number) == [1, 2])
+    }
+
+    @Test func aRecapListedTwiceIsNotAContiguousRange() throws {
+        let s = try structure(
+            #"{"order":1,"name":"A","episodes":[\#(episodes(1, 21...22)),{"season_number":1,"episode_number":22},{"season_number":1,"episode_number":24}]}"#,
+            native: [Season(number: 1, episodeCount: 30)]
+        )
+        #expect(s.nativeRange(ofSeason: 1) == nil)
+    }
+
+    @Test func anAbsoluteNumberIsReadThroughTheProvidersOwnNumbering() throws {
+        // The group opens with a special from season 0: walking the group's
+        // seasons would put absolute 4 at arc 1 episode 4 (native E3).
+        let s = try structure(
+            #"{"order":1,"name":"A","episodes":[{"season_number":0,"episode_number":1},\#(episodes(1, 1...5))]}"#,
+            native: [Season(number: 1, episodeCount: 5)]
+        )
+        #expect(s.position(ofAbsolute: 4) == EpisodePosition(season: 1, episode: 5))
+    }
+}

@@ -187,9 +187,27 @@ public struct SeasonStructure: Sendable, Equatable {
         else { return nil }
 
         let numbers = positions.map(\.episode).sorted()
-        guard let low = numbers.first, let high = numbers.last, high - low + 1 == numbers.count
+        // Distinct too: an ordering listing a recap twice — 21, 22, 22, 24 —
+        // passes the length check while missing 23.
+        guard let low = numbers.first, let high = numbers.last, high - low + 1 == numbers.count,
+              Set(numbers).count == numbers.count
         else { return nil }
         return (first.season, low...high)
+    }
+
+    /// The absolute episode numbers one shown season covers, counted through
+    /// the provider's own numbered seasons.
+    ///
+    /// Not ``nativeRange(ofSeason:)``'s episodes: those restart in each of the
+    /// provider's seasons. Bleach's Thousand-Year Blood War arcs are TMDB
+    /// season 2, episodes 1–13, and handing that range to an indexer as
+    /// absolute numbers asked for the original series' first thirteen.
+    public func absoluteRange(ofSeason season: Int) -> ClosedRange<Int>? {
+        guard let native = nativeRange(ofSeason: season) else { return nil }
+        let before = nativeSeasons
+            .filter { $0.number > 0 && $0.number < native.season }
+            .reduce(0) { $0 + $1.episodeCount }
+        return (before + native.episodes.lowerBound)...(before + native.episodes.upperBound)
     }
 
     /// Which of the provider's own seasons a shown season lives in.
@@ -218,8 +236,25 @@ public struct SeasonStructure: Sendable, Equatable {
     /// incomplete, the show was matched wrongly, or the filename was never
     /// absolute — and filing it somewhere plausible hides that instead of showing
     /// it. Keep the number the filename gave; this reading can be redone.
+    ///
+    /// An episode-group ordering reads the number the way the rest of the
+    /// structure does: through the provider's own seasons, then across. Walking
+    /// the group's seasons instead disagreed whenever a group held a special,
+    /// listed a recap twice, or ordered episodes differently — and filed
+    /// `Bleach - 340` one episode off with nothing to show for it.
     public func position(ofAbsolute absolute: Int) -> EpisodePosition? {
         guard absolute > 0 else { return nil }
+        if case .episodeGroup = ordering {
+            var remaining = absolute
+            for season in nativeSeasons.filter({ $0.number > 0 }).sorted(by: { $0.number < $1.number })
+            where season.episodeCount > 0 {
+                if remaining <= season.episodeCount {
+                    if let shown = position(ofNativeSeason: season.number, episode: remaining) { return shown }
+                    break
+                }
+                remaining -= season.episodeCount
+            }
+        }
         var remaining = absolute
         for season in numberedSeasons where season.episodeCount > 0 {
             if remaining <= season.episodeCount {

@@ -40,8 +40,13 @@ extension TMDBProvider {
         let url = try URL.build(Self.api, path: "/person/\(personID)/combined_credits",
                                 query: ["language": language])
         let payload = try await http.json(CombinedCredits.self, url: url, headers: headers)
+        // Once per title: the crew list has one entry per job — a director
+        // who also wrote and produced is there three times — and someone who
+        // acted in their own film is in both lists.
+        var seen = Set<String>()
         return (payload.cast + payload.crew)
             .compactMap { $0.candidate(assuming: nil) }
+            .filter { seen.insert($0.id).inserted }
             .sorted { ($0.year ?? 0) > ($1.year ?? 0) }
     }
 

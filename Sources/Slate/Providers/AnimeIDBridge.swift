@@ -30,7 +30,11 @@ public actor AnimeIDBridge: MetadataProvider {
 
     private let session: URLSession
     private var byIMDb: [String: [Entry]] = [:]
-    private var byTMDB: [Int: [Entry]] = [:]
+    /// TMDB numbers films and shows separately, so a TV id and a film id can
+    /// be the same number: one map for each, and a bare number (the list
+    /// doesn't say which) in both.
+    private var byTMDBTV: [Int: [Entry]] = [:]
+    private var byTMDBMovie: [Int: [Entry]] = [:]
     private var loaded = false
     private var loading: Task<Void, any Error>?
 
@@ -62,7 +66,15 @@ public actor AnimeIDBridge: MetadataProvider {
 
         var candidates: [Entry] = []
         if let imdb = lookup.ids.imdb { candidates = byIMDb[imdb] ?? [] }
-        if candidates.isEmpty, let tmdb = lookup.ids.tmdb { candidates = byTMDB[tmdb] ?? [] }
+        if candidates.isEmpty, let tmdb = lookup.ids.tmdb {
+            switch lookup.kind {
+            case .movie: candidates = byTMDBMovie[tmdb] ?? []
+            case .series: candidates = byTMDBTV[tmdb] ?? []
+            case nil:
+                let both = (byTMDBTV[tmdb] ?? []) + (byTMDBMovie[tmdb] ?? [])
+                candidates = both.reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
+            }
+        }
         guard !candidates.isEmpty else {
             Log.bridge.debug("no entry for \(Log.describe(lookup.ids), privacy: .public)")
             return nil
@@ -74,8 +86,15 @@ public actor AnimeIDBridge: MetadataProvider {
         // does not identify a work, and picking the first would file a sequel's
         // ids onto the original.
         if let season = lookup.season {
-            let matching = candidates.filter { $0.season?.tmdb == season || $0.season?.tvdb == season }
-            if matching.count == 1 { return matching.first }
+            // TMDB's numbering first and TheTVDB's only where that says
+            // nothing: the two count seasons differently, and mixing them in
+            // one test let a TVDB season 2 answer for a TMDB season 2.
+            let byTMDBSeason = candidates.filter { $0.season?.tmdb == season }
+            if byTMDBSeason.count == 1 { return byTMDBSeason.first }
+            if byTMDBSeason.isEmpty {
+                let byTVDBSeason = candidates.filter { $0.season?.tmdb == nil && $0.season?.tvdb == season }
+                if byTVDBSeason.count == 1 { return byTVDBSeason.first }
+            }
         }
         // The refusal a consumer most needs told apart from the two silences
         // either side of it. "I hold nothing for this id" and "I hold several
@@ -128,12 +147,14 @@ public actor AnimeIDBridge: MetadataProvider {
             Log.bridge.error("id bridge failed — HTTP \(http.statusCode, privacy: .public)")
             throw SlateError.http(status: http.statusCode, body: "")
         }
-        index(try JSONDecoder().decode([Entry].self, from: data))
+        // Row by row: one malformed entry used to fail the whole file and
+        // switch the bridge off for the session.
+        index(try JSONDecoder().decode([LossyEntry].self, from: data).compactMap(\.entry))
         Log.bridge.notice(
             """
             id bridge ready — \(data.count, privacy: .public) bytes, \
             \(self.byIMDb.count, privacy: .public) imdb ids, \
-            \(self.byTMDB.count, privacy: .public) tmdb ids
+            \(self.byTMDBTV.count + self.byTMDBMovie.count, privacy: .public) tmdb ids
             """
         )
     }
@@ -141,9 +162,23 @@ public actor AnimeIDBridge: MetadataProvider {
     func index(_ entries: [Entry]) {
         for entry in entries where entry.anilist_id != nil || entry.mal_id != nil {
             for imdb in entry.imdbIDs { byIMDb[imdb, default: []].append(entry) }
-            if let tmdb = entry.tmdbID { byTMDB[tmdb, default: []].append(entry) }
+            switch entry.themoviedb_id {
+            case .bare(let id)?:
+                byTMDBTV[id, default: []].append(entry)
+                byTMDBMovie[id, default: []].append(entry)
+            case .keyed(let tv, let movie)?:
+                if let tv { byTMDBTV[tv, default: []].append(entry) }
+                if let movie { byTMDBMovie[movie, default: []].append(entry) }
+            case nil: break
+            }
         }
         loaded = true
+    }
+
+    /// A row that decodes to `nil` rather than failing the list.
+    private struct LossyEntry: Decodable {
+        let entry: Entry?
+        init(from decoder: any Decoder) { entry = try? Entry(from: decoder) }
     }
 
     /// One row of the published list, keeping only the ids and the season number
