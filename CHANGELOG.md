@@ -6,6 +6,8 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-09-19
+
 ### Fixed
 
 - **MDBList scores on the right scale.** A site's own 0–100 `score` decides the value where
