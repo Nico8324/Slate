@@ -994,6 +994,10 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.13.0]: https://github.com/Nico8324/Slate/releases/tag/v0.13.0
+[0.12.1]: https://github.com/Nico8324/Slate/releases/tag/v0.12.1
+[0.12.0]: https://github.com/Nico8324/Slate/releases/tag/v0.12.0
+[0.11.0]: https://github.com/Nico8324/Slate/releases/tag/v0.11.0
 [0.10.0]: https://github.com/Nico8324/Slate/releases/tag/v0.10.0
 [0.9.0]: https://github.com/Nico8324/Slate/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Nico8324/Slate/releases/tag/v0.8.0
