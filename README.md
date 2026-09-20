@@ -115,13 +115,16 @@ which is the argument making itself.
 | **MDBList** | api key, optional | IMDb · Metacritic · both tomatometers · Letterboxd · Trakt · MyAnimeList |
 | **Fribb bridge** | **none** | Broadcast ids → AniList · MyAnimeList · AniDB ids |
 
-**Two deliberate silences.** TMDB reports `isAnime` as `nil`, never `false` — it
+**Three deliberate silences.** TMDB reports `isAnime` as `nil`, never `false` — it
 has no anime type and its `anime` keyword is volunteer-applied, so AniList
 answering *at all* is the signal; a guess dressed as a value is worse than an
 absence. And AniList synonyms are filtered to mostly-Latin names: romaji, English
 and native Japanese are always kept because trackers do file under the Japanese
 title, but AniList carries the Thai, Hebrew and Arabic name of everything, and a
 resolver that matches by substring gets nothing from those but false hits.
+And AniList reports the country it holds, or nothing — `type: ANIME` covers
+Chinese donghua and Korean aeni, so answering `JP` for everything was a wrong
+fact wearing a provider's name rather than a sensible default.
 
 A provider that fails is **not** an error. It lands in `result.failures` and the
 others still answer.
@@ -183,7 +186,11 @@ Getting the *show* right matters as much as the seasons: "Dragon Ball" used to
 resolve to Dragon Ball Z, and "Hunter x Hunter" to the 1999 adaptation rather
 than the 2011 one — 62 episodes instead of 148, and every absolute number mapped
 against the wrong run. Among results carrying the asked-for title exactly, the
-popular one wins.
+popular one wins — on every search path, including the one a `Lookup(search:)`
+with no `kind` takes, where TMDB's own relevance stood alone until 0.13.0.
+
+A year narrows the *original* release, not every release: a film re-released or
+reissued in one territory is not a film from that year.
 
 > Season logic ported from Cinema's `ShowSeasons`, `ArcSeasons` and
 > `AbsoluteEpisodeMap`, whose thresholds were arrived at against real shows.
@@ -207,7 +214,7 @@ The choosing rules are the domain knowledge, and they are not the same per kind:
 | Kind | Rule |
 | :--- | :--- |
 | **Poster · logo** | The viewer's language wins. A title treatment in a script they cannot read is worse than none, so a **textless** image beats one in a language nobody asked for. |
-| **Backdrop · still** | **Textless wins outright** — it is the one that can sit behind a title without two sets of words fighting each other. |
+| **Backdrop** | **Textless wins outright** — it is the one that can sit behind a title without two sets of words fighting each other. |
 | Within a tier | the provider's rating, then the larger image. |
 
 TMDB reports `""` for an image with no text on it; Slate reads that as textless
@@ -309,7 +316,19 @@ same request, so the fallback costs nothing.
 ```swift
 result.ratings.best?.first { $0.source == "letterboxd" }?.value   // 8.6, on 0…10
 result.ratings.best?.first { $0.source == "letterboxd" }?.native  // 4.3, as Letterboxd prints it
+
+result.allRatings                                                 // every site, every provider
 ```
+
+`ratings` is a field like any other, so one provider wins it — MDBList, which
+answers with five sites at once. But TMDB and AniList each answer it too, with
+their own single score, and losing a field is no reason to discard a provider
+that actually found the title. `allRatings` returns all of them in priority
+order, one entry per site.
+
+Every score carries the number of people behind it. A 10.0 from three voters and
+an 8.4 from thirty thousand are the same number and not the same claim, and
+`votes` is the difference.
 
 Never averaged. Sites measure different things and disagree usefully — a film
 Letterboxd loves and the tomatometer does not is a signal, and the mean of the
