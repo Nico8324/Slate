@@ -116,12 +116,22 @@ public struct AniListProvider: MetadataProvider, Sendable {
             backdropURL: media.bannerImage.flatMap(URL.init(string:)),
             isAnime: true,
             cast: media.castMembers,
+            // AniList's mean, kept with the number of people behind it. A 78
+            // from forty voters and a 78 from four hundred thousand are the
+            // same number and not the same claim.
+            ratings: media.averageScore.map {
+                [Rating(source: "anilist", value: Double($0) / 10, outOf: 10, votes: media.scoreCount)]
+            },
             // Tags are AniList's keywords, ranked by how strongly the community
             // says they apply. Below sixty is noise — a tag two people agreed on.
             keywords: media.tags?.filter { ($0.rank ?? 0) >= 60 }.compactMap(\.name).nilIfEmpty,
             studios: media.studioNames,
-            originalLanguage: "ja",
-            originCountries: ["JP"],
+            // Not hardcoded to Japan. AniList's `type: ANIME` covers Chinese
+            // donghua and Korean aeni too, and answering `ja`/`JP` for
+            // "Mo Dao Zu Shi" is a wrong fact carrying this provider's name.
+            // Silent where AniList does not say, rather than guessing.
+            originalLanguage: media.countryOfOrigin.flatMap(Media.language(ofCountry:)),
+            originCountries: media.countryOfOrigin?.nilIfEmpty.map { [$0] },
             status: media.status.flatMap(ReleaseStatus.init(providerValue:)),
             relations: media.relationList,
             nextEpisodeAirDate: media.nextAiringEpisode?.date,
@@ -136,7 +146,8 @@ public struct AniListProvider: MetadataProvider, Sendable {
       Page(perPage: 5) {
         media(id: $id, search: $search, type: ANIME) {
           id idMal format episodes duration genres averageScore bannerImage synonyms description
-          popularity status
+          popularity status countryOfOrigin
+          stats { scoreDistribution { amount } }
           nextAiringEpisode { airingAt }
           studios { edges { isMain node { name } } }
           tags { name rank }
@@ -185,7 +196,35 @@ public struct AniListProvider: MetadataProvider, Sendable {
         var startDate: FuzzyDate?
         var coverImage: CoverImage?
         var status: String?
+        /// ISO 3166-1, as AniList spells it: `JP`, `CN`, `KR`, `TW`.
+        var countryOfOrigin: String?
+        var stats: Stats?
+
+        struct Stats: Decodable {
+            struct Bucket: Decodable { var amount: Int? }
+            var scoreDistribution: [Bucket]?
+        }
+
+        /// How many people actually scored it — the sum of the distribution,
+        /// **not** `popularity`, which counts everyone who put it on a list
+        /// including the ones who never rated it.
+        var scoreCount: Int? {
+            guard let buckets = stats?.scoreDistribution, !buckets.isEmpty else { return nil }
+            return buckets.compactMap(\.amount).reduce(0, +)
+        }
         var nextAiringEpisode: Airing?
+
+        /// The language a work from this country was made in. Only the four
+        /// countries AniList catalogues, because a general country-to-language
+        /// table is a different problem and mostly wrong.
+        static func language(ofCountry country: String) -> String? {
+            switch country.uppercased() {
+            case "JP": "ja"
+            case "CN", "TW", "HK": "zh"
+            case "KR": "ko"
+            default: nil
+            }
+        }
         var studios: StudioConnection?
         var tags: [Tag]?
         var relations: RelationConnection?

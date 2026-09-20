@@ -207,3 +207,47 @@ struct ProviderTests {
         #expect("Attack on Titan".normalizedForMatching != "Death Note".normalizedForMatching)
     }
 }
+
+@Suite("Every field is assembled")
+struct FieldCoverageTests {
+    /// The check that catches the forgotten line. Adding a field means touching
+    /// `Snapshot`, `FieldKey`, `TitleMetadata` and `assemble` — and only the
+    /// first three are enforced by the compiler. A field left out of `assemble`
+    /// is silently empty for every caller forever.
+    @Test func assembleFillsEveryFieldKey() {
+        let everything = Snapshot(
+            ids: Identifiers(imdb: "tt0000001", tmdb: 1, aniList: 2, myAnimeList: 3),
+            kind: .series,
+            title: "Title",
+            originalTitle: "Original",
+            overview: "Overview",
+            releaseDate: Date(timeIntervalSince1970: 0),
+            runtimeMinutes: 24,
+            episodeCount: 12,
+            genres: ["Action"],
+            rating: 8.5,
+            posterURL: URL(string: "https://example.invalid/p.jpg"),
+            backdropURL: URL(string: "https://example.invalid/b.jpg"),
+            isAnime: true,
+            contentRating: "TV-MA",
+            trailerYouTubeID: "abc",
+            cast: [CastMember(id: 1, name: "Someone", character: "Role")],
+            ratings: [Rating(source: "tmdb", value: 8.5, votes: 100)],
+            watchOptions: [WatchOption(service: "Crunchyroll", kind: .subscription, region: "US")],
+            keywords: ["anime"],
+            studios: ["Studio"],
+            originalLanguage: "ja",
+            originCountries: ["JP"],
+            franchise: Franchise(id: 1, name: "Franchise"),
+            status: .airing,
+            relations: [Relation(kind: .sequel, ids: Identifiers(aniList: 9), title: "Next")],
+            nextEpisodeAirDate: Date(timeIntervalSince1970: 100),
+            lastEpisodeAirDate: Date(timeIntervalSince1970: 50),
+            searchNames: ["Title"]
+        )
+
+        let result = MetadataAggregator(providers: []).assemble([.tmdb: everything])
+        let missing = FieldKey.allCases.filter { result.providersConsulted(for: $0).isEmpty }
+        #expect(missing.isEmpty, "assemble() never reads: \(missing.map { $0.rawValue }.sorted())")
+    }
+}

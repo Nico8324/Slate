@@ -215,6 +215,26 @@ extension TitleMetadata {
         }
     }
 
+    /// Every site's score from every provider that answered, in field-priority
+    /// order, one entry per site.
+    ///
+    /// ``ratings`` keeps the "one field, one winner" rule the rest of this type
+    /// follows: MDBList wins it, because five sites at once is the answer that
+    /// field is for. But the winner-take-all rule is the wrong shape for
+    /// *this* field alone — TMDB's own score and AniList's are real answers
+    /// from providers that actually found the title, and dropping them because
+    /// a broader list existed loses two sources for no reason.
+    ///
+    /// Deduplicated by ``Rating/source``: MDBList reports a `tmdb` score of its
+    /// own, and so does TMDB. The higher-priority provider's spelling of a
+    /// shared source wins, which is the same rule ``Field/best`` follows.
+    public var allRatings: [Rating] {
+        var seen: Set<String> = []
+        return ratings.candidates
+            .flatMap(\.value)
+            .filter { seen.insert($0.source.lowercased()).inserted }
+    }
+
     /// `nil` when no provider supplied an IMDb id or a kind — a resolver cannot
     /// use the result without both.
     public var resolveInput: ResolveInput? {

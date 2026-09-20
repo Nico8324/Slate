@@ -26,7 +26,13 @@ public struct MetadataAggregator: Sendable {
     public let fieldPriority: [FieldKey: [Provider]]
 
     public static let defaultFieldPriority: [FieldKey: [Provider]] = [
-        .episodeCount: [.tmdb, .aniList]
+        .episodeCount: [.tmdb, .aniList],
+        // MDBList first, and this is the same kind of correction as
+        // `episodeCount`. TMDB and AniList each answer `ratings` with their own
+        // single score; MDBList answers with IMDb, Metacritic, the tomatometer,
+        // Letterboxd and MyAnimeList at once. Under the general order the
+        // one-entry list would win a field whose whole point is breadth.
+        .ratings: [.mdbList, .tmdb, .aniList]
     ]
 
     public init(

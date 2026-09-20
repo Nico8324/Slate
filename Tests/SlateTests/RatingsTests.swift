@@ -139,3 +139,33 @@ extension TMDBRequestTests {
     }
 }
 }
+
+extension TMDBRequestTests {
+  @Suite(.serialized)
+  struct MergedRatings {
+    private func assembled() -> TitleMetadata {
+        MetadataAggregator(providers: []).assemble([
+            .mdbList: Snapshot(ratings: [
+                Rating(source: "imdb", value: 8.4),
+                Rating(source: "tmdb", value: 8.2, outOf: 10, votes: 1),
+            ]),
+            .tmdb: Snapshot(ratings: [Rating(source: "tmdb", value: 8.5, outOf: 10, votes: 30_000)]),
+            .aniList: Snapshot(ratings: [Rating(source: "anilist", value: 8.4)]),
+        ])
+    }
+
+    @Test func everySourceSurvivesTheFieldsOneWinner() {
+        #expect(assembled().ratings.best?.map(\.source) == ["imdb", "tmdb"],
+                "the field itself is unchanged — MDBList still wins it")
+        #expect(assembled().allRatings.map(\.source) == ["imdb", "tmdb", "anilist"],
+                "AniList's score is not dropped for having lost the field")
+    }
+
+    @Test func aSourceTwoProvidersBothReportIsKeptOnce() throws {
+        let tmdbEntries = assembled().allRatings.filter { $0.source == "tmdb" }
+        #expect(tmdbEntries.count == 1)
+        #expect(tmdbEntries.first?.votes == 1,
+                "MDBList outranks TMDB for this field, so its spelling of the shared source wins")
+    }
+  }
+}

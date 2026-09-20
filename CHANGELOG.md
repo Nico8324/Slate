@@ -6,6 +6,87 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-09-20
+
+### Fixed
+
+- `position(ofAbsolute:)` no longer falls through to the reading it rejects.
+  Under an episode-group ordering it walked the provider's seasons and, when
+  the number did not map, carried on into the group's own seasons — the walk
+  the method's own reasoning rules out, off by one wherever a group holds a
+  special or lists a recap twice. An unmapped number is now unmapped, which is
+  what every other unaccounted-for case in `SeasonStructure` answers.
+- `AnimeIDBridge.index(_:)` replaces rather than appends. Appending made a
+  second indexing pass fatal instead of merely wasteful: every id would hold
+  two candidates, `entry(for:)` refuses to choose between two, and the bridge
+  went silent for everything while looking like a provider that knew nothing.
+  Cheaper to make the second pass harmless than to prove it unreachable.
+- AniList no longer answers `ja`/`JP` for everything. `type: ANIME` covers
+  Chinese donghua and Korean aeni, and the country was hardcoded — so
+  "Mo Dao Zu Shi" came back Japanese, as a fact carrying AniList's name.
+  `countryOfOrigin` is asked for and mapped; silence where AniList does not say.
+- A search with no `kind` — the path `Lookup(search:)` takes — runs through the
+  same exact-title-then-popularity rule as a typed one. It was still taking
+  TMDB's first result, which is 1999's Hunter x Hunter ahead of 2011's: the
+  rule was absent from the path the documentation calls the safer default.
+- Film searches narrow by `primary_release_year` rather than `year`. `year`
+  matches *any* release date a film carries, so a re-release or a regional
+  reissue answered for a year the film was not made in.
+- Poster and backdrop URLs go through the percent-encoding helper the rest of
+  the file uses. They were interpolated raw, and these paths are provider JSON.
+- Published lists are scoped to the provider's `region`. TMDB computes
+  "now playing" and "upcoming" as release-date windows *per country*, and
+  unscoped they mean "released somewhere on earth" — which is how a
+  restoration re-released in one territory turned up among this week's films.
+  Search stays unscoped: a title someone typed should be findable wherever it
+  came out.
+- The response cache keys POST bodies by the body itself rather than by
+  `hashValue`. A collision would have returned another query's JSON with
+  nothing downstream able to tell.
+- A 429 no longer waits twice. The failed attempt paused the shared rate
+  limiter until the server's instant *and* slept locally for the same span,
+  so every retry behind a limiter served the wait through twice over.
+
+### Added
+
+- TMDB and AniList contribute to `ratings`, each with the vote count behind the
+  score — 10.0 from three voters and 8.4 from thirty thousand were previously
+  the same claim, since only the bare `rating` Double was filled and TMDB's
+  `vote_count` was not even decoded. AniList's count is the summed score
+  distribution, not `popularity`, which counts everyone who listed it.
+- A test asserting every `FieldKey` is populated by `assemble`. Adding a field
+  means touching four places and the compiler enforces three of them; the
+  fourth was silently skippable.
+- `README` documents what `region` actually governs, and that reading
+  `Locale.current` is the app's job, not the package's.
+- Films report `originCountries`. `origin_country` is a television-only field,
+  so the whole field silently meant "series only" and an anime *film* could
+  never satisfy a JP-plus-animation heuristic; `production_countries` is the
+  film equivalent.
+
+### Removed
+
+- `ArtworkKind.still`. Nothing produced it, and `ArtworkSet.all(.still)`
+  returned the backdrops — so asking for episode frames handed back something
+  else entirely. Frames come from `Episode.stillURL`, where they always did.
+  A source break for anything switching over the enum, which is the honest
+  signal that the case answered nothing.
+
+### Changed
+
+- The season cache is bounded, oldest out first, as `ResponseCache` already
+  was. It was the one cache in the package with no ceiling, holding a full
+  `SeasonStructure` per show for the life of the provider.
+- `find`, `movieID(for:)` and `showID(for:)` share one `/find/` request helper
+  instead of spelling the same request three times.
+- `ratings` has its own field priority, MDBList first. It answers with IMDb,
+  Metacritic, the tomatometer, Letterboxd and MyAnimeList at once, and under
+  the general order TMDB's new one-entry list would have won a field whose
+  whole point is breadth. The same kind of correction as `episodeCount`.
+- `String.asReleaseDate` uses two formatters built once instead of
+  constructing a `DateFormatter` per call — it runs for every date of every
+  snapshot of every provider.
+
 ## [0.12.1] — 2026-09-19
 
 ### Fixed

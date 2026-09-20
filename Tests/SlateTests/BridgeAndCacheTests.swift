@@ -148,3 +148,21 @@ extension TMDBRequestTests {
         #expect(try await tmdb.candidates(for: "x", page: 0).isEmpty)
     }
 }
+
+@Suite("Indexing twice")
+struct BridgeReindexTests {
+    /// Appending made a second pass fatal rather than wasteful: every id would
+    /// hold two candidates, `entry(for:)` refuses to choose between two, and the
+    /// bridge went quiet for everything while looking merely ignorant.
+    @Test func asecondPassReplacesRatherThanDoubling() async throws {
+        let rows = #"[{"anilist_id":16498,"mal_id":16498,"imdb_id":"tt2560140"}]"#
+        let entries = try JSONDecoder().decode([AnimeIDBridge.Entry].self, from: Data(rows.utf8))
+        let bridge = AnimeIDBridge()
+
+        await bridge.index(entries)
+        await bridge.index(entries)
+
+        let snapshot = try await bridge.snapshot(for: Lookup(imdbID: "tt2560140"))
+        #expect(snapshot?.ids.aniList == 16498, "two passes, one candidate")
+    }
+}

@@ -306,3 +306,77 @@ extension TMDBRequestTests {
     }
   }
 }
+
+extension TMDBRequestTests {
+  @Suite(.serialized)
+  struct ProviderSemantics {
+    private func provider() -> TMDBProvider {
+        TMDBProvider(accessToken: "t", session: StubURLProtocol.session)
+    }
+
+    /// `year` matches any release date a film carries, so a re-release or a
+    /// regional reissue answers for a year it was not made in.
+    @Test func aYearNarrowsTheOriginalReleaseNotEveryRelease() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":1,"title":"X"}]}"#)
+        StubURLProtocol.stub("/movie/1", json: #"{"id":1,"title":"X"}"#)
+
+        _ = try await provider().snapshot(for: Lookup(search: "X", year: 1999, kind: .movie))
+
+        let asked = try #require(StubURLProtocol.requested.first?.query)
+        #expect(asked.contains("primary_release_year=1999"))
+        #expect(!asked.contains("&year="))
+    }
+
+    /// The kindless path is what `Lookup(search:)` takes, and it was the one
+    /// still handing back TMDB's raw relevance — 1999's Hunter x Hunter first.
+    @Test func aKindlessSearchPicksTheSameWinnerAsATypedOne() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/multi", json: """
+        {"results":[
+          {"id":99,"media_type":"person","name":"Hunter x Hunter"},
+          {"id":11061,"media_type":"tv","name":"Hunter x Hunter","popularity":40.0},
+          {"id":6572,"media_type":"tv","name":"Hunter x Hunter","popularity":12.0}]}
+        """)
+        StubURLProtocol.stub("/tv/11061", json: #"{"id":11061,"name":"Hunter x Hunter"}"#)
+
+        let snapshot = try #require(await provider().snapshot(for: Lookup(search: "Hunter x Hunter")))
+
+        #expect(snapshot.ids.tmdb == 11061, "the 2011 adaptation, not the person and not relevance's first")
+    }
+
+    /// `origin_country` is a television field. Without the film equivalent the
+    /// whole field silently meant "series only".
+    @Test func aFilmHasAnOriginCountryToo() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":1,"title":"X"}]}"#)
+        StubURLProtocol.stub("/movie/1", json: """
+        {"id":1,"title":"Your Name","production_countries":[{"iso_3166_1":"JP"}],
+         "vote_average":8.5,"vote_count":11000}
+        """)
+
+        let snapshot = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .movie)))
+
+        #expect(snapshot.originCountries == ["JP"])
+        // And the score arrives with the thing that says what it is worth.
+        #expect(snapshot.ratings?.first?.source == "tmdb")
+        #expect(snapshot.ratings?.first?.votes == 11000)
+    }
+
+    /// MDBList answers `ratings` with five sites at once; TMDB answers with one.
+    /// Under the general order the one-entry list would win the field.
+    @Test func theBroadRatingsListWinsOverASingleScore() {
+        let aggregator = MetadataAggregator(providers: [])
+        let result = aggregator.assemble([
+            .tmdb: Snapshot(ratings: [Rating(source: "tmdb", value: 8.5)]),
+            .mdbList: Snapshot(ratings: [
+                Rating(source: "imdb", value: 8.4), Rating(source: "metacritic", value: 7.9),
+            ]),
+        ])
+
+        #expect(result.ratings.best?.map(\.source) == ["imdb", "metacritic"])
+        #expect(result.providersConsulted(for: .ratings) == [.mdbList, .tmdb],
+                "TMDB is still there, just not first")
+    }
+  }
+}

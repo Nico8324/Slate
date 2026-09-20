@@ -12,7 +12,8 @@ extension TMDBRequestTests {
         StubURLProtocol.stub("graphql.anilist.co", json: """
         {"data":{"Page":{"media":[{
           "id":16498,"idMal":16498,"format":"TV","episodes":25,"popularity":837840,
-          "status":"FINISHED",
+          "status":"FINISHED","countryOfOrigin":"JP","averageScore":84,
+          "stats":{"scoreDistribution":[{"amount":100},{"amount":900}]},
           "title":{"romaji":"Shingeki no Kyojin","english":"Attack on Titan"},
           "studios":{"edges":[
             {"isMain":true,"node":{"name":"WIT STUDIO"}},
@@ -87,10 +88,49 @@ extension TMDBRequestTests {
         #expect(ReleaseStatus(providerValue: "nonsense") == nil, "an unknown word is not a status")
     }
 
-    @Test func anAnimeIsJapaneseUnlessSomethingSaysOtherwise() async throws {
+    @Test func theCountryIsAniListsAnswerAndNotAnAssumption() async throws {
         let snapshot = try await snapshot()
         #expect(snapshot.originalLanguage == "ja")
         #expect(snapshot.originCountries == ["JP"])
+    }
+
+    /// `type: ANIME` is not `made in Japan`: AniList catalogues Chinese donghua
+    /// and Korean aeni under it, and this used to answer `ja`/`JP` for both.
+    @Test func donghuaIsNotJapanese() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("graphql.anilist.co", json: """
+        {"data":{"Page":{"media":[{
+          "id":1,"format":"TV","countryOfOrigin":"CN",
+          "title":{"romaji":"Mo Dao Zu Shi"}}]}}}
+        """)
+
+        let snapshot = try #require(await AniListProvider(session: StubURLProtocol.session)
+            .snapshot(for: Lookup(search: "Mo Dao Zu Shi")))
+
+        #expect(snapshot.originalLanguage == "zh")
+        #expect(snapshot.originCountries == ["CN"])
+    }
+
+    /// Silence, not a guess, when AniList does not say.
+    @Test func noCountryMeansNoClaim() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("graphql.anilist.co", json: """
+        {"data":{"Page":{"media":[{"id":2,"format":"TV","title":{"romaji":"Unknown"}}]}}}
+        """)
+
+        let snapshot = try #require(await AniListProvider(session: StubURLProtocol.session)
+            .snapshot(for: Lookup(search: "Unknown")))
+
+        #expect(snapshot.originalLanguage == nil)
+        #expect(snapshot.originCountries == nil)
+    }
+
+    /// The vote count is the number who scored it, not the number who listed it.
+    @Test func theScoreCarriesHowManyPeopleGaveIt() async throws {
+        let ratings = try #require(try await snapshot().ratings)
+        #expect(ratings.map(\.source) == ["anilist"])
+        #expect(ratings.first?.value == 8.4)
+        #expect(ratings.first?.votes == 1000, "the distribution summed, not popularity's 837840")
     }
   }
 }

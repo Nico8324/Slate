@@ -6,8 +6,6 @@ public enum ArtworkKind: String, Sendable, Hashable {
     /// A transparent title treatment. TMDB holds these, so they cost no second
     /// credential.
     case logo
-    /// An episode frame.
-    case still
 }
 
 /// One image, with what is needed to choose between it and the forty others the
@@ -69,7 +67,7 @@ public struct ArtworkSet: Sendable, Equatable {
     public func all(_ kind: ArtworkKind) -> [Artwork] {
         switch kind {
         case .poster: posters
-        case .backdrop, .still: backdrops
+        case .backdrop: backdrops
         case .logo: logos
         }
     }
@@ -97,7 +95,7 @@ public struct ArtworkSet: Sendable, Equatable {
         // By language, not by locale: images are tagged `en`, and a caller passing the provider's
         // own `en-US` ranked every poster in its language below the textless ones.
         let languages = requested.map { $0.split(separator: "-").first.map(String.init) ?? $0 }
-        if kind == .backdrop || kind == .still {
+        if kind == .backdrop {
             return artwork.isTextless ? 0 : (languages.contains(artwork.language ?? "") ? 1 : 2)
         }
         if let language = artwork.language, let rank = languages.firstIndex(of: language) {

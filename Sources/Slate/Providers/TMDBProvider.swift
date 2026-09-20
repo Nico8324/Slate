@@ -20,6 +20,27 @@ public actor TMDBProvider: MetadataProvider {
     /// exactly the answer that would otherwise be re-asked over the network every
     /// single time.
     var seasonCache: [Int: SeasonStructure?] = [:]
+    /// Insertion order, so the cache can be bounded. A `SeasonStructure` carries
+    /// every episode of every season, and this was the one cache in the package
+    /// with no ceiling — a library scan held all of them for the process.
+    private var seasonCacheOrder: [Int] = []
+    private static let seasonCacheLimit = 256
+
+    func rememberSeasons(_ structure: SeasonStructure?, for showID: Int) {
+        if seasonCache.updateValue(structure, forKey: showID) == nil {
+            seasonCacheOrder.append(showID)
+        }
+        // Oldest out first, as in `ResponseCache`: the show that matters is the
+        // one someone just opened.
+        while seasonCacheOrder.count > Self.seasonCacheLimit {
+            seasonCache.removeValue(forKey: seasonCacheOrder.removeFirst())
+        }
+    }
+
+    func forgetSeasons() {
+        seasonCache.removeAll()
+        seasonCacheOrder.removeAll()
+    }
 
     /// The language metadata comes back in, as TMDB spells it: `fr-FR`, `ja-JP`.
     /// Artwork is deliberately unaffected — every language is fetched and
@@ -74,7 +95,7 @@ public actor TMDBProvider: MetadataProvider {
     public func updateLanguage(_ language: String) async {
         guard language != self.language else { return }
         self.language = language
-        seasonCache.removeAll()
+        forgetSeasons()
         await http.cache?.removeAll()
     }
 
@@ -122,10 +143,17 @@ public actor TMDBProvider: MetadataProvider {
 
     // MARK: - Endpoints
 
-    private func find(imdb: String) async throws -> (id: Int, kind: Kind)? {
+    /// The one `/find/` request. Three callers read three things out of it —
+    /// whichever kind it is, the film id, the show id — and it was written three
+    /// times for that.
+    func findByIMDb(_ imdb: String) async throws -> FindResponse {
         let url = try URL.build(Self.api, path: "/find/\(imdb)",
                                 query: ["external_source": "imdb_id", "language": language])
-        let response = try await http.json(FindResponse.self, url: url, headers: headers)
+        return try await http.json(FindResponse.self, url: url, headers: headers)
+    }
+
+    private func find(imdb: String) async throws -> (id: Int, kind: Kind)? {
+        let response = try await findByIMDb(imdb)
         if let movie = response.movie_results.first { return (movie.id, .movie) }
         if let show = response.tv_results.first { return (show.id, .series) }
         return nil
@@ -134,8 +162,12 @@ public actor TMDBProvider: MetadataProvider {
     private func search(_ query: String, year: Int?, kind: Kind?) async throws -> (id: Int, kind: Kind)? {
         switch kind {
         case .movie:
+            // `primary_release_year`, not `year`: the latter matches *any*
+            // release date a film carries, so a re-release or a regional
+            // reissue puts a 1959 film in 2024's results.
             let url = try URL.build(Self.api, path: "/search/movie",
-                                    query: ["query": query, "year": year.map(String.init),
+                                    query: ["query": query,
+                                            "primary_release_year": year.map(String.init),
                                             "language": language])
             let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
             return Self.best(of: results, matching: query).map { ($0.id, .movie) }
@@ -149,7 +181,12 @@ public actor TMDBProvider: MetadataProvider {
             let url = try URL.build(Self.api, path: "/search/multi",
                                     query: ["query": query, "language": language])
             let results = try await http.json(SearchResponse.self, url: url, headers: headers).results
-            guard let hit = results.first(where: { $0.media_type == "movie" || $0.media_type == "tv" }) else { return nil }
+            // People come back in a mixed list and are not titles. Then the same
+            // rule as the typed searches: this is the path `Lookup(search:)`
+            // takes, so it is where TMDB's raw relevance — 1999's Hunter x
+            // Hunter ahead of 2011's — was still standing.
+            let titles = results.filter { $0.media_type == "movie" || $0.media_type == "tv" }
+            guard let hit = Self.best(of: titles, matching: query) else { return nil }
             return (hit.id, hit.media_type == "movie" ? .movie : .series)
         }
     }
@@ -182,19 +219,25 @@ public actor TMDBProvider: MetadataProvider {
             episodeCount: payload.number_of_episodes,
             genres: payload.genres?.map(\.name),
             rating: payload.vote_average,
-            posterURL: payload.poster_path.map { URL(string: Self.images + "/original" + $0) } ?? nil,
-            backdropURL: payload.backdrop_path.map { URL(string: Self.images + "/original" + $0) } ?? nil,
+            posterURL: Self.imageURL(payload.poster_path),
+            backdropURL: Self.imageURL(payload.backdrop_path),
             // Deliberately silent: TMDB has no anime type, and its `anime`
             // keyword is volunteer-applied. AniList answering is the signal.
             isAnime: nil,
             contentRating: payload.certification(in: region),
             trailerYouTubeID: payload.videos?.trailerKey,
             cast: payload.castMembers,
+            // The same number as `rating`, plus the thing `rating` cannot
+            // carry: 10.0 from three voters and 8.4 from thirty thousand are
+            // not comparable, and only one of them is a recommendation.
+            ratings: payload.vote_average.map {
+                [Rating(source: "tmdb", value: $0, outOf: 10, votes: payload.vote_count)]
+            },
             watchOptions: payload.watchOptions(in: region),
             keywords: payload.keywordNames,
             studios: payload.studioNames,
             originalLanguage: payload.original_language?.nilIfEmpty,
-            originCountries: payload.origin_country?.compactMap(\.nilIfEmpty),
+            originCountries: payload.originCountryCodes,
             franchise: payload.belongs_to_collection?.franchise,
             status: payload.status.flatMap(ReleaseStatus.init(providerValue:)),
             nextEpisodeAirDate: payload.next_episode_to_air?.air_date?.asReleaseDate,
@@ -283,10 +326,24 @@ public actor TMDBProvider: MetadataProvider {
         var number_of_episodes: Int?
         var genres: [Genre]?
         var vote_average: Double?
+        var vote_count: Int?
         var poster_path: String?
         var backdrop_path: String?
         var original_language: String?
         var origin_country: [String]?
+        /// Film's answer to `origin_country`, which television has and film does
+        /// not — without this the field silently meant "series only", and an
+        /// anime *film* could never satisfy a JP-plus-animation heuristic.
+        var production_countries: [ProductionCountry]?
+
+        struct ProductionCountry: Decodable { var iso_3166_1: String? }
+
+        var originCountryCodes: [String]? {
+            // `nilIfEmpty` on the first: a film carrying `origin_country: []`
+            // would otherwise stop the fallback with an empty answer.
+            origin_country?.compactMap(\.nilIfEmpty).nilIfEmpty
+                ?? production_countries?.compactMap { $0.iso_3166_1?.nilIfEmpty }.nilIfEmpty
+        }
         var status: String?
         var belongs_to_collection: CollectionRef?
         var networks: [Named]?
@@ -300,8 +357,9 @@ public actor TMDBProvider: MetadataProvider {
         enum CodingKeys: String, CodingKey {
             case id, imdb_id, external_ids, title, name, original_title, original_name
             case overview, release_date, first_air_date, runtime, episode_run_time
-            case number_of_episodes, genres, vote_average, poster_path, backdrop_path
-            case original_language, origin_country, status, belongs_to_collection
+            case number_of_episodes, genres, vote_average, vote_count, poster_path, backdrop_path
+            case original_language, origin_country, production_countries
+            case status, belongs_to_collection
             case networks, production_companies, keywords, translations
             case next_episode_to_air, last_episode_to_air, content_ratings, release_dates
             case videos, credits, aggregate_credits

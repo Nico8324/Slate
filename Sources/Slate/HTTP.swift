@@ -107,7 +107,9 @@ struct HTTP: Sendable {
 
         // Keyed by method, URL and body: AniList is a POST whose URL never
         // changes, so the URL alone would collapse every query into one entry.
-        let key = "\(method) \(url.absoluteString) \(body?.hashValue ?? 0)"
+        // The body verbatim, not its hash: a hash collision would hand back
+        // another query's JSON, and nothing downstream could tell.
+        let key = "\(method) \(url.absoluteString) \(body?.base64EncodedString() ?? "")"
         let endpoint = Log.redactingQuery(url)
         if let cached = await cache?.data(for: key) {
             Log.http.debug("cache hit \(method, privacy: .public) \(endpoint, privacy: .public)")
@@ -151,7 +153,12 @@ struct HTTP: Sendable {
                 )
                 // The server's own number where it gave one — it knows when the
                 // window resets and guessing shorter just burns the next attempt.
-                try? await Task.sleep(for: .seconds(retryAfter ?? Self.backoff(attempt)))
+                // A 429 already paused the limiter until that instant, and
+                // `waitForTurn()` on the next attempt honours it — sleeping here
+                // too would serve the wait twice.
+                if limiter == nil || http.statusCode != 429 {
+                    try? await Task.sleep(for: .seconds(retryAfter ?? Self.backoff(attempt)))
+                }
                 continue
             }
             if [401, 403].contains(http.statusCode), let provider {
@@ -234,14 +241,22 @@ extension URL {
 extension String {
     /// `"2019-04-06"` and `"2019"` both appear in provider payloads.
     var asReleaseDate: Date? {
+        for formatter in Self.releaseDateFormatters {
+            if let date = formatter.date(from: self) { return date }
+        }
+        return nil
+    }
+
+    /// One formatter per format, built once: constructing a `DateFormatter` is
+    /// expensive and this runs for every date of every snapshot. Two of them
+    /// rather than one whose `dateFormat` is reassigned — that mutation is what
+    /// makes a shared formatter unsafe to hold.
+    private static let releaseDateFormatters: [DateFormatter] = ["yyyy-MM-dd", "yyyy"].map { format in
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")
-        for format in ["yyyy-MM-dd", "yyyy"] {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: self) { return date }
-        }
-        return nil
+        formatter.dateFormat = format
+        return formatter
     }
 }

@@ -249,11 +249,16 @@ public struct SeasonStructure: Sendable, Equatable {
             for season in nativeSeasons.filter({ $0.number > 0 }).sorted(by: { $0.number < $1.number })
             where season.episodeCount > 0 {
                 if remaining <= season.episodeCount {
-                    if let shown = position(ofNativeSeason: season.number, episode: remaining) { return shown }
-                    break
+                    return position(ofNativeSeason: season.number, episode: remaining)
                 }
                 remaining -= season.episodeCount
             }
+            // No fall-through to the walk below. That walk reads the group's own
+            // seasons, which is the reading this method exists to avoid — it is
+            // off by one wherever a group holds a special or lists a recap
+            // twice, and an episode filed one season along with nothing to show
+            // for it is worse than an unmapped number the caller can keep.
+            return nil
         }
         var remaining = absolute
         for season in numberedSeasons where season.episodeCount > 0 {

@@ -24,7 +24,7 @@ extension TMDBProvider {
         }
 
         let resolved = try await resolveSeasons(showID: showID)
-        seasonCache[showID] = resolved
+        rememberSeasons(resolved, for: showID)
         return resolved
     }
 
@@ -285,19 +285,19 @@ extension TMDBProvider {
 
     /// The TMDB id of a film, found by IMDb id when that is all there is.
     func movieID(for ids: Identifiers) async throws -> Int? {
-        if let id = ids.tmdb { return id }
-        guard let imdb = ids.imdb else { return nil }
-        let url = try URL.build(Self.api, path: "/find/\(imdb)",
-                                query: ["external_source": "imdb_id", "language": language])
-        return try await http.json(FindIDs.self, url: url, headers: headers).movie_results.first?.id
+        try await tmdbID(for: ids) { $0.movie_results.first?.id }
     }
 
     func showID(for ids: Identifiers) async throws -> Int? {
+        try await tmdbID(for: ids) { $0.tv_results.first?.id }
+    }
+
+    private func tmdbID(
+        for ids: Identifiers, reading pick: (FindResponse) -> Int?
+    ) async throws -> Int? {
         if let id = ids.tmdb { return id }
         guard let imdb = ids.imdb else { return nil }
-        let url = try URL.build(Self.api, path: "/find/\(imdb)",
-                                query: ["external_source": "imdb_id", "language": language])
-        return try await http.json(FindIDs.self, url: url, headers: headers).tv_results.first?.id
+        return pick(try await findByIMDb(imdb))
     }
 
     // MARK: - Payloads
@@ -343,9 +343,4 @@ extension TMDBProvider {
         let seasons: [SeasonEntry]?
     }
 
-    struct FindIDs: Decodable {
-        struct Hit: Decodable { let id: Int }
-        var movie_results: [Hit] = []
-        var tv_results: [Hit] = []
-    }
 }

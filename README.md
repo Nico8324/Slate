@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.11.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.13.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -345,6 +345,29 @@ await tmdb.updateAPIKey(rotatedToken)                     // rotated in place
 ```
 
 Keys travel as `Authorization: Bearer`, **never** in a query string.
+
+### 🌍 Region
+
+`region` defaults to `US` and is not cosmetic: it picks the age rating
+(`TV-MA` in the US, `16` in France — not translations of each other), the
+streaming services reported by `watchOptions`, and the release-date window
+behind `.nowPlayingMovies` and `.upcomingMovies`. Left at `US` for someone
+elsewhere, availability lists services they cannot subscribe to, which is worse
+than listing none.
+
+Slate does not read the device's locale for you — a package that returns
+different answers depending on ambient state is hard to test and harder to
+explain. Pass it once, from the app:
+
+```swift
+let tmdb = TMDBProvider(accessToken: keychain.tmdbToken,
+                        region: Locale.current.region?.identifier ?? "US")
+await tmdb.updateRegion(settings.country)   // a picker, if you offer one, wins
+```
+
+`Locale.current.region` is the device's *region setting* — not the storefront
+and not where the person is. It is the best guess available without asking; a
+setting of your own beats it.
 
 ## 🚫 Deliberately not here
 

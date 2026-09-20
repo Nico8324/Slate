@@ -116,3 +116,34 @@ extension TMDBRequestTests {
     }
   }
 }
+
+extension TMDBRequestTests {
+  @Suite(.serialized)
+  struct BrowseRegion {
+    /// The 1959-film-in-this-week's-releases bug: TMDB's release-date windows
+    /// are per country, and unscoped they mean "released somewhere on earth".
+    @Test func aPublishedListIsScopedToTheRegion() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/movie/upcoming", json: #"{"results":[{"id":1,"title":"X"}]}"#)
+
+        let provider = TMDBProvider(accessToken: "t", region: "FR", session: StubURLProtocol.session)
+        _ = try await provider.titles(in: .upcomingMovies)
+
+        let asked = try #require(StubURLProtocol.requested.last?.query)
+        #expect(asked.contains("region=FR"))
+    }
+
+    /// The other half: a name someone typed should be findable whatever country
+    /// it came out in.
+    @Test func searchIsNotScopedToTheRegion() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":1,"title":"X"}]}"#)
+
+        let provider = TMDBProvider(accessToken: "t", region: "FR", session: StubURLProtocol.session)
+        _ = try await provider.candidates(for: "X", kind: .movie)
+
+        let asked = try #require(StubURLProtocol.requested.last?.query)
+        #expect(!asked.contains("region="))
+    }
+}
+}

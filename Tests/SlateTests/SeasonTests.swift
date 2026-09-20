@@ -309,3 +309,81 @@ struct SeasonBugHuntTests {
         #expect(s.position(ofAbsolute: 4) == EpisodePosition(season: 1, episode: 5))
     }
 }
+
+@Suite("Unmappable absolute numbers")
+struct AbsoluteFallbackTests {
+    /// A group ordering over a ten-episode provider season that accounts for six
+    /// of them — and skips native 6, the way a group holding a recap does.
+    private func structure() -> SeasonStructure {
+        func episode(_ shown: Int, _ number: Int, native: Int) -> Episode {
+            Episode(season: shown, number: number, native: EpisodePosition(season: 1, episode: native))
+        }
+        return SeasonStructure(
+            seasons: [
+                Season(number: 1, episodeCount: 3, episodes: [
+                    episode(1, 1, native: 1), episode(1, 2, native: 2), episode(1, 3, native: 3),
+                ]),
+                Season(number: 2, episodeCount: 3, episodes: [
+                    episode(2, 1, native: 4), episode(2, 2, native: 5), episode(2, 3, native: 7),
+                ]),
+            ],
+            orderingName: "Arcs",
+            nativeSeasons: [Season(number: 1, episodeCount: 10)],
+            provider: .tmdb
+        )
+    }
+
+    @Test func anAccountedForNumberStillReads() {
+        #expect(structure().position(ofAbsolute: 5) == EpisodePosition(season: 2, episode: 2))
+    }
+
+    /// Native 6 is the episode the ordering skipped. Walking the group's own
+    /// seasons instead answers S2E3 — a real-looking position the group never
+    /// claimed for this number, and one episode along from the truth.
+    @Test func anUnaccountedForNumberIsUnmappedRatherThanGuessed() {
+        #expect(structure().position(ofAbsolute: 6) == nil)
+    }
+
+    @Test func aNumberPastTheRunIsUnmappedToo() {
+        #expect(structure().position(ofAbsolute: 99) == nil)
+    }
+
+    /// Unchanged for the ordinary case: no group, so the seasons shown are the
+    /// provider's own and walking them is the only reading there is.
+    @Test func plainSeasonsStillWalk() {
+        let plain = SeasonStructure(
+            nativeSeasons: [Season(number: 1, episodeCount: 12), Season(number: 2, episodeCount: 12)],
+            provider: .tmdb
+        )
+        #expect(plain.position(ofAbsolute: 13) == EpisodePosition(season: 2, episode: 1))
+    }
+}
+
+@Suite("The season cache has a ceiling")
+struct SeasonCacheTests {
+    /// The one cache in the package that had no limit, holding a full
+    /// SeasonStructure — every episode of every season — per show, for the life
+    /// of the provider. A library scan is thousands of shows.
+    @Test func theOldestShowsFallOutFirst() async {
+        let provider = TMDBProvider(accessToken: "t")
+        let plain = SeasonStructure(nativeSeasons: [Season(number: 1, episodeCount: 12)], provider: .tmdb)
+
+        for showID in 1...300 { await provider.rememberSeasons(plain, for: showID) }
+
+        let cache = await provider.seasonCache
+        #expect(cache.count == 256)
+        #expect(cache[1] == nil, "the first show asked about is the first to go")
+        #expect(cache[300] != nil, "the one just asked about is kept")
+    }
+
+    /// Re-asking about a show already cached must not add a second order entry,
+    /// or the cache would evict live shows while short of its limit.
+    @Test func reRememberingAShowDoesNotGrowTheOrder() async {
+        let provider = TMDBProvider(accessToken: "t")
+        for _ in 1...500 { await provider.rememberSeasons(nil, for: 7) }
+
+        let cache = await provider.seasonCache
+        #expect(cache.count == 1)
+        #expect(cache[7] != nil)
+    }
+}

@@ -160,6 +160,14 @@ public actor AnimeIDBridge: MetadataProvider {
     }
 
     func index(_ entries: [Entry]) {
+        // Replace, never append. Appending is what makes a second pass fatal
+        // rather than wasteful: every id would then hold two candidates, and
+        // `entry(for:)` refuses to choose between two — so the bridge would go
+        // quiet for everything while looking like a provider that knows nothing.
+        // Cheaper to make the second pass harmless than to prove it unreachable.
+        byIMDb.removeAll()
+        byTMDBTV.removeAll()
+        byTMDBMovie.removeAll()
         for entry in entries where entry.anilist_id != nil || entry.mal_id != nil {
             for imdb in entry.imdbIDs { byIMDb[imdb, default: []].append(entry) }
             switch entry.themoviedb_id {

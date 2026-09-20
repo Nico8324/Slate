@@ -31,9 +31,20 @@ extension TMDBProvider {
     }
 
     /// One of TMDB's published lists.
+    ///
+    /// Scoped to ``TMDBProvider``'s `region`. "Now playing" and "upcoming" are
+    /// *release-date* windows, and TMDB computes them per country: unscoped, a
+    /// restoration re-released in one territory is playing now everywhere, which
+    /// is why a 1959 film turns up in a list of this week's. The other lists
+    /// ignore the parameter, which is cheaper than maintaining a table of which
+    /// ones read it.
+    ///
+    /// Search is deliberately left unscoped — a region there narrows what can be
+    /// found, and a title someone typed should be findable wherever it came out.
     public func titles(in list: TitleList, page: Int = 1) async throws -> [Candidate] {
         guard (1...Self.lastPage).contains(page) else { return [] }
-        return try await candidates(path: list.path, kind: list.kind, query: ["page": String(page)])
+        return try await candidates(path: list.path, kind: list.kind,
+                                    query: ["page": String(page), "region": region])
     }
 
     /// Everything a person is credited in, most recent first.
