@@ -130,7 +130,7 @@ public struct MetadataAggregator: Sendable {
                         Log.aggregator.debug("\(provider.rawValue, privacy: .public) — no match")
                     }
                 case .failure(let error):
-                    failures[provider] = String(describing: error)
+                    failures[provider] = Log.describeFailure(error)
                     Log.aggregator.error(
                         "\(provider.rawValue, privacy: .public) failed — \(Log.describe(error), privacy: .public)"
                     )
@@ -218,7 +218,7 @@ public struct MetadataAggregator: Sendable {
             for await (provider, result) in group {
                 switch result {
                 case .success(let set): if let set { byProvider[provider] = set }
-                case .failure(let error): failures[provider] = String(describing: error)
+                case .failure(let error): failures[provider] = Log.describeFailure(error)
                 }
             }
         }

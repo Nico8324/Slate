@@ -115,3 +115,41 @@ struct ErrorLoggingTests {
         #expect(result.failures[.tmdb]?.contains("upstream exploded") == true)
     }
 }
+
+@Suite("The failing URL")
+struct FailingURLTests {
+    private struct Offline: MetadataProvider, ArtworkProvider {
+        let provider = Provider.tmdb
+        func snapshot(for lookup: Lookup) async throws -> Snapshot? { try await fail() }
+        func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int?) async throws -> ArtworkSet? {
+            try await fail()
+        }
+
+        /// The shape a TMDB search has: what the person typed, in the query
+        /// string, on a host that cannot resolve.
+        private func fail<T>() async throws -> T {
+            let url = URL(string: "https://tmdb.invalid.invalid/3/search/movie?query=private%20phrase")!
+            _ = try await URLSession.shared.data(from: url)
+            throw SlateError.malformedURL
+        }
+    }
+
+    /// `String(describing:)` of a `URLError` embeds `NSErrorFailingURLKey` —
+    /// the whole URL, query string included. That is the search term, inside a
+    /// string that reads like an opaque diagnostic.
+    @Test func aTransportFailureDoesNotCarryTheQueryToTheCaller() async {
+        let result = await MetadataAggregator(providers: [Offline()])
+            .metadata(for: Lookup(search: "private phrase"))
+
+        let failure = result.failures[.tmdb]
+        #expect(failure?.contains("private") == false, "not what was searched for")
+        #expect(failure?.hasPrefix("URLError") == true, "still says what went wrong")
+    }
+
+    @Test func theSameHoldsForArtwork() async {
+        let set = await MetadataAggregator(providers: [Offline()])
+            .artwork(for: Identifiers(tmdb: 1), kind: .movie)
+
+        #expect(set.failures[.tmdb]?.contains("private") == false)
+    }
+}

@@ -8,6 +8,14 @@ All notable changes to Slate. Format follows
 
 ### Fixed
 
+- The search term no longer reaches the log, or `TitleMetadata.failures`, by
+  way of a `URLError`. `String(describing:)` of one embeds
+  `NSErrorFailingURLKey` — the whole request URL, query string included — so
+  any transport failure on a TMDB search (offline, DNS, timeout: the ordinary
+  case on a phone) wrote what the person typed into the system log at
+  `.public`, inside a string that reads like an opaque diagnostic. `failures`
+  keeps Slate's own errors verbatim, body and all, and reduces every foreign
+  one to its kind.
 - Errors in log lines say what kind of failure it was and no more. `SlateError.http`
   carries the first 512 bytes of the response body — right for a caller holding
   the error, wrong for the system log, where a provider echoing the query back

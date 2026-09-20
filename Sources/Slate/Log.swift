@@ -92,6 +92,20 @@ enum Log {
         }
     }
 
+    /// What ``TitleMetadata/failures`` says about a failure: everything Slate's
+    /// own errors carry, and nothing a foreign one does.
+    ///
+    /// A `URLError` is the reason this is not just `String(describing:)`. Its
+    /// description embeds `NSErrorFailingURLKey` — the **whole** request URL,
+    /// query string included — so a search that failed for want of a network
+    /// put what the person typed into a string that reads like an opaque
+    /// diagnostic. A consumer logging `failures`, which is the obvious thing to
+    /// do with it, would publish it. A transport failure has no body worth
+    /// keeping anyway; ``SlateError/http(status:body:)`` does, and keeps it.
+    static func describeFailure(_ error: any Error) -> String {
+        error is SlateError ? String(describing: error) : describe(error)
+    }
+
     private static func codingPath(_ error: DecodingError) -> String {
         let context = switch error {
         case .typeMismatch(_, let context), .valueNotFound(_, let context),
