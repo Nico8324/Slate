@@ -98,7 +98,7 @@ extension TMDBProvider {
             throw CancellationError()
         } catch {
             Log.seasons.error(
-                "tmdb \(showID, privacy: .public) — episode groups unavailable (\(error.localizedDescription, privacy: .public)); using TMDB's own seasons"
+                "tmdb \(showID, privacy: .public) — episode groups unavailable (\(Log.describe(error), privacy: .public)); using TMDB's own seasons"
             )
             return plain
         }

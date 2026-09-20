@@ -6,6 +6,18 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Errors in log lines say what kind of failure it was and no more. `SlateError.http`
+  carries the first 512 bytes of the response body — right for a caller holding
+  the error, wrong for the system log, where a provider echoing the query back
+  in an error message would have written what someone searched for at
+  `.public`. `HTTP` never logged a body for that reason; the aggregator then
+  logged the whole error, which is the one path around that care. `Log.describe(_:)`
+  now reduces an error to its kind, keeping a `DecodingError`'s coding path
+  because that is about the payload's shape rather than the title.
+  `TitleMetadata.failures` is unchanged — it is a value, not a log line.
+
 ## [0.13.0] — 2026-09-20
 
 ### Fixed

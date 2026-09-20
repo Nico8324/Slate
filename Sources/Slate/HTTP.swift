@@ -180,7 +180,7 @@ struct HTTP: Sendable {
                 // whose shape changed. Says which type failed to decode, never
                 // the body — that is the provider's payload about a title.
                 Log.http.error(
-                    "\(endpoint, privacy: .public) — HTTP 200 but \(String(describing: Response.self), privacy: .public) did not decode: \(error.localizedDescription, privacy: .public)"
+                    "\(endpoint, privacy: .public) — HTTP 200 but \(String(describing: Response.self), privacy: .public) did not decode: \(Log.describe(error), privacy: .public)"
                 )
                 throw error
             }

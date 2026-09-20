@@ -63,6 +63,45 @@ enum Log {
             .nilIfEmpty ?? "no ids"
     }
 
+    /// An error reduced to the part that is safe at any privacy level: what
+    /// kind of failure it was, never what the provider said about the title.
+    ///
+    /// ``SlateError/http(status:body:)`` carries the first 512 bytes of the
+    /// response body, which is the right thing for a caller holding the error
+    /// in process and the wrong thing for the system log: a provider that
+    /// echoes the query back in an error message would write what someone
+    /// searched for into it, at `.public`, through the one path that does not
+    /// go through ``HTTP`` — which never logs a body for exactly this reason.
+    static func describe(_ error: any Error) -> String {
+        switch error {
+        case let error as SlateError:
+            switch error {
+            case .http(let status, _): "HTTP \(status)"
+            case .rateLimited(let retryAfter):
+                "rate limited\(retryAfter.map { ", retry after \(Int($0))s" } ?? "")"
+            case .missingCredential(let provider): "\(provider.rawValue) credential refused"
+            case .malformedURL: "malformed URL"
+            }
+        case is CancellationError: "cancelled"
+        case let error as URLError: "URLError \(error.code.rawValue)"
+        // The coding path says which field broke, which is about the payload's
+        // shape and not about the title. The rest of a `DecodingError`'s
+        // description can quote the value that failed, so it stays out.
+        case let error as DecodingError: "decoding failed\(Self.codingPath(error))"
+        default: String(describing: type(of: error))
+        }
+    }
+
+    private static func codingPath(_ error: DecodingError) -> String {
+        let context = switch error {
+        case .typeMismatch(_, let context), .valueNotFound(_, let context),
+             .keyNotFound(_, let context), .dataCorrupted(let context): context
+        @unknown default: nil as DecodingError.Context?
+        }
+        let path = (context?.codingPath ?? []).map(\.stringValue).joined(separator: ".")
+        return path.isEmpty ? "" : " at \(path)"
+    }
+
     /// A URL reduced to the part that is safe at any privacy level: host and
     /// path, never the query.
     ///

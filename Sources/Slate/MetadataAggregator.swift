@@ -132,7 +132,7 @@ public struct MetadataAggregator: Sendable {
                 case .failure(let error):
                     failures[provider] = String(describing: error)
                     Log.aggregator.error(
-                        "\(provider.rawValue, privacy: .public) failed — \(String(describing: error), privacy: .public)"
+                        "\(provider.rawValue, privacy: .public) failed — \(Log.describe(error), privacy: .public)"
                     )
                 }
             }
@@ -174,7 +174,7 @@ public struct MetadataAggregator: Sendable {
                 // Said as a failure, not folded into "no structure": a rejected token, a rate
                 // limit and a decode failure all used to read as a show that has no seasons.
                 Log.seasons.error(
-                    "season structure for \(Log.describe(ids), privacy: .public) failed: \(String(describing: error), privacy: .public)"
+                    "season structure for \(Log.describe(ids), privacy: .public) failed: \(Log.describe(error), privacy: .public)"
                 )
             }
         }

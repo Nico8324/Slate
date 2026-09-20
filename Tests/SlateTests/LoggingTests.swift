@@ -65,3 +65,53 @@ import Testing
         }
     }
 }
+
+@Suite("Errors in log lines")
+struct ErrorLoggingTests {
+    /// The body is the hazard. `HTTP` never logs one; this is the path that
+    /// used to, by way of `String(describing: error)` at `.public`.
+    @Test func theResponseBodyNeverReachesALogLine() {
+        let leaky = SlateError.http(status: 404, body: #"{"status_message":"no results for my private search"}"#)
+
+        #expect(Log.describe(leaky) == "HTTP 404")
+        #expect(!Log.describe(leaky).contains("private search"))
+    }
+
+    @Test func theOtherFailuresStillSayWhatHappened() {
+        #expect(Log.describe(SlateError.rateLimited(retryAfter: 30)) == "rate limited, retry after 30s")
+        #expect(Log.describe(SlateError.rateLimited(retryAfter: nil)) == "rate limited")
+        #expect(Log.describe(SlateError.missingCredential(.tmdb)) == "tmdb credential refused")
+        #expect(Log.describe(SlateError.malformedURL) == "malformed URL")
+        #expect(Log.describe(CancellationError()) == "cancelled")
+    }
+
+    /// A coding path is about the payload's shape, not about the title — and it
+    /// is the one thing that makes a 200-that-changed-shape diagnosable.
+    @Test func aDecodeFailureSaysWhichFieldBroke() throws {
+        struct Row: Decodable { let id: Int }
+        let json = Data(#"{"id":"not a number"}"#.utf8)
+
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(Row.self, from: json) }
+        do {
+            _ = try JSONDecoder().decode(Row.self, from: json)
+        } catch {
+            #expect(Log.describe(error) == "decoding failed at id")
+            #expect(!Log.describe(error).contains("not a number"), "never the value that failed")
+        }
+    }
+
+    /// `TitleMetadata.failures` is a value a caller holds in process, not a log
+    /// line, and the body is what makes a failure diagnosable there.
+    @Test func theCallerFacingFailureKeepsItsDetail() async {
+        struct Failing: MetadataProvider {
+            let provider = Provider.tmdb
+            func snapshot(for lookup: Lookup) async throws -> Snapshot? {
+                throw SlateError.http(status: 500, body: "upstream exploded")
+            }
+        }
+
+        let result = await MetadataAggregator(providers: [Failing()]).metadata(for: Lookup(search: "X"))
+
+        #expect(result.failures[.tmdb]?.contains("upstream exploded") == true)
+    }
+}
