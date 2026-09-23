@@ -275,5 +275,76 @@ struct ReviewFixes {
             try await MDBListProvider(apiKey: "", session: StubURLProtocol.session).titles(in: .trending, kind: .series)
         }
     }
+
+    // MARK: - Anime
+
+    @Test func aniListChartsAskForTheKindAndSeasonAndReadEnglishFirst() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { request in
+            var data = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+                stream.open()
+                defer { stream.close() }
+                var bytes = [UInt8](repeating: 0, count: 4096)
+                while case let count = stream.read(&bytes, maxLength: bytes.count), count > 0 {
+                    data.append(contentsOf: bytes.prefix(count))
+                }
+            }
+            let body = String(decoding: data, as: UTF8.self)
+            #expect(body.contains(#""format":["TV","TV_SHORT","ONA"]"#))
+            #expect(body.contains(#""season":"FALL""#) && body.contains(#""seasonYear":2026"#))
+            return .init(body: """
+            {"data":{"Page":{"media":[
+              {"id":16498,"idMal":16498,"title":{"romaji":"Shingeki no Kyojin","english":"Attack on Titan"},
+               "startDate":{"year":2013},"coverImage":{"extraLarge":"https://img.anili.st/c.jpg"}},
+              {"id":2,"title":{"romaji":"Only Romaji"}},
+              {"id":0,"title":{"romaji":"No id"}}]}}}
+            """)
+        }
+        let october = try #require(Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 10, day: 5)))
+        let titles = try await AniListProvider(session: StubURLProtocol.session)
+            .titles(in: .thisSeason, kind: .series, now: october)
+        #expect(titles.map(\.title) == ["Attack on Titan", "Only Romaji"])
+        #expect(titles.first?.ids == Identifiers(aniList: 16498, myAnimeList: 16498))
+        #expect(titles.first?.kind == .series)
+        #expect(titles.first?.posterURL != nil)
+    }
+
+    @Test func aGraphQLErrorIsNotAnEmptyChart() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("graphql.anilist.co", json: #"{"data":null,"errors":[{"message":"x"}]}"#)
+        await #expect(throws: SlateError.graphQL(.aniList)) {
+            try await AniListProvider(session: StubURLProtocol.session).titles(in: .trending, kind: .movie)
+        }
+    }
+
+    @Test func broadcastSeasonsFollowTheJapaneseCalendar() {
+        func date(_ month: Int) -> Date {
+            Calendar(identifier: .gregorian).date(from: DateComponents(timeZone: .gmt, year: 2026, month: month, day: 15))!
+        }
+        #expect(AniListProvider.season(of: date(1)).season == "WINTER")
+        #expect(AniListProvider.season(of: date(5)).season == "SPRING")
+        #expect(AniListProvider.season(of: date(8)).season == "SUMMER")
+        #expect(AniListProvider.season(of: date(11)).season == "FALL")
+    }
+
+    @Test func theBridgeFindsTheBroadcastOfAnAniListWork() async throws {
+        let entries = try JSONDecoder().decode([AnimeIDBridge.Entry].self, from: Data("""
+        [{"anilist_id":300,"mal_id":300,"imdb_id":["tt0102847"],"themoviedb_id":{"tv":62913},"season":{"tmdb":1}},
+         {"anilist_id":1225,"mal_id":1225,"imdb_id":["tt0102847"],"themoviedb_id":{"tv":62913},"season":{"tmdb":2}},
+         {"anilist_id":7,"themoviedb_id":{"movie":55}},
+         {"anilist_id":8}]
+        """.utf8))
+        let bridge = AnimeIDBridge()
+        await bridge.index(entries)
+
+        let second = try #require(await bridge.broadcastIDs(ofAniList: 1225, kind: .series))
+        #expect(second.ids.tmdb == 62913)
+        #expect(second.ids.imdb == "tt0102847")
+        #expect(second.season == 2, "a sequel work is a season of the same show")
+        #expect(try await bridge.broadcastIDs(ofAniList: 7, kind: .movie)?.ids.tmdb == 55)
+        #expect(try await bridge.broadcastIDs(ofAniList: 8, kind: .series) == nil, "no broadcast id to give")
+        #expect(try await bridge.broadcastIDs(ofAniList: 999, kind: .series) == nil)
+    }
 }
 }

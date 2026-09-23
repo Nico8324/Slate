@@ -6,6 +6,14 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Anime charts.** `AniListProvider.titles(in:kind:page:perPage:now:)` — trending,
+  popular, this season, top rated and upcoming, for series or films, ranked by AniList.
+  `AniListChart`.
+- `AnimeIDBridge.broadcastIDs(ofAniList:kind:)`: an AniList work's IMDb and TMDB ids,
+  and the TMDB season it is — the direction `snapshot(for:)` does not go.
+
 ### Fixed
 
 - `TMDBProvider.resized(_:toFit:)` replaces any size in a TMDB image URL, not only

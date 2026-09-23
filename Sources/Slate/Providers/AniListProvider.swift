@@ -9,7 +9,7 @@ public struct AniListProvider: MetadataProvider, Sendable {
     public let provider = Provider.aniList
 
     private static let endpoint = URL(string: "https://graphql.anilist.co")!
-    private let http: HTTP
+    let http: HTTP
 
     /// Hold **one instance for the life of the app**, or copies of one.
     ///

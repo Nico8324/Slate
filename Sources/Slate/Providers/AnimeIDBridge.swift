@@ -34,6 +34,7 @@ public actor AnimeIDBridge: MetadataProvider {
     /// doesn't say which) in both.
     private var byTMDBTV: [Int: [Entry]] = [:]
     private var byTMDBMovie: [Int: [Entry]] = [:]
+    private var byAniList: [Int: Entry] = [:]
     private var loaded = false
     private let downloads = ResponseCache(limit: 0)
     private let lifetime: Duration
@@ -131,6 +132,27 @@ public actor AnimeIDBridge: MetadataProvider {
         return nil
     }
 
+    /// The broadcast ids — IMDb and TMDB — of the work AniList numbers `id`, the
+    /// direction ``snapshot(for:)`` does not go.
+    ///
+    /// Several AniList works map to one TMDB show — each season of *Attack on Titan*
+    /// is its own AniList entry and one TMDB series — so the answer is the show, and
+    /// `season` is the TMDB season that work is, where the list states it.
+    ///
+    /// - Parameter kind: Picks the TMDB film or show id when an entry carries both.
+    public func broadcastIDs(ofAniList id: Int, kind: Kind) async throws -> (ids: Identifiers, season: Int?)? {
+        try await load()
+        guard let entry = byAniList[id] else { return nil }
+        let tmdb: Int? = switch entry.themoviedb_id {
+        case .bare(let value)?: value
+        case .keyed(let tv, let movie)?: kind == .movie ? (movie ?? tv) : (tv ?? movie)
+        case nil: nil
+        }
+        let ids = Identifiers(imdb: entry.imdbIDs.first, tmdb: tmdb, aniList: id, myAnimeList: entry.mal_id).validated
+        guard ids.tmdb != nil || ids.imdb != nil else { return nil }
+        return (ids, entry.season?.tmdb)
+    }
+
     /// Share one download; cancelling a caller leaves other waiters running.
     private func load() async throws {
         try Task.checkCancellation()
@@ -169,7 +191,9 @@ public actor AnimeIDBridge: MetadataProvider {
         byIMDb.removeAll()
         byTMDBTV.removeAll()
         byTMDBMovie.removeAll()
+        byAniList.removeAll()
         for entry in entries where entry.anilist_id != nil || entry.mal_id != nil {
+            if let aniList = entry.anilist_id, byAniList[aniList] == nil { byAniList[aniList] = entry }
             for imdb in entry.imdbIDs { byIMDb[imdb, default: []].append(entry) }
             switch entry.themoviedb_id {
             case .bare(let id)?:
