@@ -1,17 +1,16 @@
 import Foundation
 
-/// Asks every provider at once and keeps all of their answers.
+/// Asks every provider concurrently and attributes each accepted answer.
 ///
-/// The aggregator never picks a winner beyond ordering by ``priority``: each
-/// field on the result carries every provider that answered it, so a consumer
-/// can refresh from one source without silently overwriting a correction that
-/// came from another.
+/// Conflicting shared IDs or media kinds exclude lower-priority snapshots;
+/// answers contradicting an explicit lookup ID are rejected regardless of priority.
+/// Rejections and request errors appear in ``TitleMetadata/failures``. Each field
+/// retains all accepted values, ordered by its configured provider priority.
 public struct MetadataAggregator: Sendable {
     public let providers: [any MetadataProvider]
-    /// Highest priority first. Providers missing from this list sort last —
-    /// which is where ``Provider/mdbList`` and ``Provider/fribb`` deliberately
-    /// sit: the bridge supplies no fields at all, and MDBList's ratings are a
-    /// field no other provider answers, so neither has an ordering to lose.
+    /// Highest priority first. Unlisted providers sort last, alphabetically by
+    /// identifier. This order also decides which conflicting snapshot is retained.
+    /// Field-specific priorities apply only after a snapshot has been accepted.
     public let priority: [Provider]
 
     /// Priority for fields where the general order is the wrong answer.
@@ -49,12 +48,13 @@ public struct MetadataAggregator: Sendable {
     ///
     /// Never throws: a provider that fails is recorded in
     /// ``TitleMetadata/failures`` and the rest still answer. A result where no
-    /// provider matched is an empty ``TitleMetadata``, not an error.
+    /// provider matched is an empty ``TitleMetadata``, not an error. Cancellation
+    /// stops enrichment and can return partial results with failure descriptions.
     public func metadata(for lookup: Lookup) async -> TitleMetadata {
         Log.aggregator.notice(
             "lookup \(Log.describe(lookup), privacy: .public) across \(self.providers.count, privacy: .public) providers"
         )
-        var (snapshots, failures) = await ask(providers, lookup)
+        var (snapshots, failures) = await ask(providers, lookup, explicit: lookup.ids)
         var result = assemble(snapshots, failures: failures)
         var asked = lookup
 
@@ -65,6 +65,7 @@ public struct MetadataAggregator: Sendable {
         // into a MyAnimeList id, and MDBList can then be asked for MyAnimeList's
         // score. Bounded, and it stops the moment a round learns nothing.
         for round in 0..<Self.resolutionRounds {
+            guard !Task.isCancelled else { break }
             let silent = providers.filter {
                 snapshots[$0.provider] == nil && failures[$0.provider] == nil
             }
@@ -77,7 +78,10 @@ public struct MetadataAggregator: Sendable {
             guard !silent.isEmpty, next.ids != asked.ids || next.kind != asked.kind else { break }
             asked = next
 
-            let (late, lateFailures) = await ask(silent, asked)
+            // Checked against what the caller asked for, not against ids other providers
+            // supplied along the way: those can disagree with each other, and priority
+            // settles that in `assemble` — a learned id is not an explicit one.
+            let (late, lateFailures) = await ask(silent, asked, explicit: lookup.ids)
             guard !late.isEmpty || !lateFailures.isEmpty else { break }
             snapshots.merge(late) { first, _ in first }
             failures.merge(lateFailures) { first, _ in first }
@@ -107,7 +111,7 @@ public struct MetadataAggregator: Sendable {
     static let resolutionRounds = 2
 
     private func ask(
-        _ providers: [any MetadataProvider], _ lookup: Lookup
+        _ providers: [any MetadataProvider], _ lookup: Lookup, explicit: Identifiers
     ) async -> (snapshots: [Provider: Snapshot], failures: [Provider: String]) {
         var snapshots: [Provider: Snapshot] = [:]
         var failures: [Provider: String] = [:]
@@ -115,7 +119,15 @@ public struct MetadataAggregator: Sendable {
         await withTaskGroup(of: (Provider, Result<Snapshot?, any Error>).self) { group in
             for provider in providers {
                 group.addTask {
-                    do { return (provider.provider, .success(try await provider.snapshot(for: lookup))) }
+                    do {
+                        try Task.checkCancellation()
+                        try lookup.validate()
+                        let snapshot = try await provider.snapshot(for: lookup)
+                        if let snapshot, explicit.conflicts(with: snapshot.ids) {
+                            throw SlateError.conflictingMatch(provider.provider)
+                        }
+                        return (provider.provider, .success(snapshot))
+                    }
                     catch { return (provider.provider, .failure(error)) }
                 }
             }
@@ -157,7 +169,11 @@ public struct MetadataAggregator: Sendable {
     /// A separate request from ``metadata(for:)`` because it is a separate
     /// question and several requests more expensive. A caller asking *what is
     /// this* should not pay for episode lists it did not ask for.
-    public func seasons(for ids: Identifiers) async -> SeasonStructure? {
+    ///
+    /// - Parameter kind: Pass ``TitleMetadata/kind``'s best value. TMDB numbers
+    ///   films and shows separately, and a film's id is also some unrelated
+    ///   show's; `.movie` returns `nil` without asking.
+    public func seasons(for ids: Identifiers, kind: Kind? = nil) async -> SeasonStructure? {
         let capable = providers.compactMap { $0 as? TMDBProvider }
         guard !capable.isEmpty else {
             // The inert-wiring case: providers were supplied, none of them was a
@@ -168,8 +184,9 @@ public struct MetadataAggregator: Sendable {
             return nil
         }
         for provider in capable {
+            guard !Task.isCancelled else { return nil }
             do {
-                if let structure = try await provider.seasons(for: ids) { return structure }
+                if let structure = try await provider.seasons(for: ids, kind: kind) { return structure }
             } catch {
                 // Said as a failure, not folded into "no structure": a rejected token, a rate
                 // limit and a decode failure all used to read as a show that has no seasons.
@@ -193,6 +210,8 @@ public struct MetadataAggregator: Sendable {
     /// the rest still answer. Use ``ArtworkSet/best(_:preferring:)`` to choose
     /// one, or hand the whole list to a picker.
     ///
+    /// - Parameter ids: Identifiers for the title whose artwork is requested.
+    /// - Parameter kind: Whether the title is a movie or a series.
     /// - Parameter nativeSeason: the **provider's own** season number, not one
     ///   from a corrected ``SeasonStructure``. Translate first with
     ///   ``SeasonStructure/nativeSeason(ofSeason:)``: Bleach's arc season 2 lives
@@ -211,7 +230,10 @@ public struct MetadataAggregator: Sendable {
         await withTaskGroup(of: (Provider, Result<ArtworkSet?, any Error>).self) { group in
             for provider in capable {
                 group.addTask {
-                    do { return (provider.provider, .success(try await provider.artwork(for: ids, kind: kind, nativeSeason: nativeSeason))) }
+                    do {
+                        try Task.checkCancellation()
+                        return (provider.provider, .success(try await provider.artwork(for: ids, kind: kind, nativeSeason: nativeSeason)))
+                    }
                     catch { return (provider.provider, .failure(error)) }
                 }
             }
@@ -224,7 +246,7 @@ public struct MetadataAggregator: Sendable {
         }
 
         var merged = ArtworkSet(failures: failures)
-        for provider in byProvider.keys.sorted(by: { rank($0) < rank($1) }) {
+        for provider in byProvider.keys.sorted(by: { (rank($0), $0.rawValue) < (rank($1), $1.rawValue) }) {
             if let set = byProvider[provider] { merged.merge(set) }
         }
         Log.artwork.notice(
@@ -240,6 +262,26 @@ public struct MetadataAggregator: Sendable {
     }
 
     func assemble(_ snapshots: [Provider: Snapshot], failures: [Provider: String] = [:]) -> TitleMetadata {
+        var failures = failures
+        var accepted: [Provider: Snapshot] = [:]
+        var ids = Identifiers()
+        var kind: Kind?
+        // Exact and id matches are accepted before loose ones, so a fuzzy name
+        // match cannot evict a precise answer by outranking it: "Love" (the
+        // film) matched *Love Live!* on AniList by containment, and AniList's
+        // priority used to throw TMDB's film and its IMDb id away.
+        let byConfidence = sorted(snapshots, by: priority).sorted { !$0.1.matchedLoosely && $1.1.matchedLoosely }
+        for (provider, snapshot) in byConfidence {
+            if ids.conflicts(with: snapshot.ids)
+                || (kind != nil && snapshot.kind != nil && kind != snapshot.kind) {
+                failures[provider] = "Conflicting provider match: identifiers or media kind disagree"
+                continue
+            }
+            accepted[provider] = snapshot
+            ids.fill(from: snapshot.ids)
+            kind = kind ?? snapshot.kind
+        }
+        let snapshots = accepted
         var result = TitleMetadata(failures: failures)
 
         for (_, snapshot) in sorted(snapshots, by: priority) {
@@ -260,6 +302,9 @@ public struct MetadataAggregator: Sendable {
         result.isAnime = field(.isAnime, snapshots) { $0.isAnime }
         result.contentRating = field(.contentRating, snapshots) { $0.contentRating }
         result.cast = field(.cast, snapshots) { $0.cast }
+        result.crew = field(.crew, snapshots) { $0.crew }
+        result.trailers = field(.trailers, snapshots) { $0.trailers }
+        result.recommendations = field(.recommendations, snapshots) { $0.recommendations }
         result.ratings = field(.ratings, snapshots) { $0.ratings }
         result.watchOptions = field(.watchOptions, snapshots) { $0.watchOptions }
         result.keywords = field(.keywords, snapshots) { $0.keywords }
@@ -292,7 +337,7 @@ public struct MetadataAggregator: Sendable {
 
     private func sorted(_ snapshots: [Provider: Snapshot], by order: [Provider]) -> [(Provider, Snapshot)] {
         snapshots.sorted { lhs, rhs in
-            rank(lhs.key, in: order) < rank(rhs.key, in: order)
+            (rank(lhs.key, in: order), lhs.key.rawValue) < (rank(rhs.key, in: order), rhs.key.rawValue)
         }
     }
 

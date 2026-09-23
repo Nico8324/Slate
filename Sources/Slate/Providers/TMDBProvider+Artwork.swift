@@ -10,6 +10,8 @@ extension TMDBProvider: ArtworkProvider {
     /// when it turns out to have none, which for a picker is the wrong shape
     /// entirely.
     ///
+    /// - Parameter ids: Identifiers for the title whose artwork is requested.
+    /// - Parameter kind: Whether the title is a movie or a series.
     /// - Parameter nativeSeason: **TMDB's own** season number, not one from a
     ///   corrected ``SeasonStructure``. Translate first with
     ///   ``SeasonStructure/nativeSeason(ofSeason:)``. Bleach's arc season 2 lives
@@ -17,6 +19,8 @@ extension TMDBProvider: ArtworkProvider {
     ///   Thousand-Year Blood War's posters — a real picture of the wrong season,
     ///   with nothing in the result to say so.
     public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
+        try Task.checkCancellation()
+        try Lookup(ids: ids, season: nativeSeason).validate()
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
 
         let path: String
@@ -59,8 +63,7 @@ extension TMDBProvider: ArtworkProvider {
                 // interpolated raw: an unencoded `?` or `#` could not escape the
                 // pinned host, but it would silently become a query or a fragment
                 // and fetch something other than the picture asked for.
-                guard let encoded = file_path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-                      let url = URL(string: "\(TMDBProvider.images)/original\(encoded)")
+                guard let url = TMDBProvider.imageURL(file_path)
                 else { return nil }
                 return Artwork(
                     kind: kind, url: url,
@@ -85,10 +88,14 @@ extension AniListProvider: ArtworkProvider {
     /// between; they join the set and ``ArtworkSet/best(_:preferring:)`` ranks
     /// them below anything TMDB can describe.
     ///
+    /// - Parameter ids: Identifiers for the title whose artwork is requested.
+    /// - Parameter kind: Whether the title is a movie or a series.
     /// - Parameter nativeSeason: AniList files each cour as its own entry and
     ///   holds no season-level art, so anything but `nil` returns `nil` rather
     ///   than a title-level image standing in for a season's.
     public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
+        try Task.checkCancellation()
+        try Lookup(ids: ids, season: nativeSeason).validate()
         guard nativeSeason == nil, let id = ids.aniList else { return nil }
         guard let snapshot = try await snapshot(for: Lookup(ids: Identifiers(aniList: id))) else {
             return nil

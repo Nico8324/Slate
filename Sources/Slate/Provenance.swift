@@ -13,6 +13,9 @@ public enum Provider: String, Sendable, Hashable {
     /// The published cross-map between broadcast ids and anime ids. Supplies no
     /// metadata — it exists to make other providers reachable.
     case fribb
+    /// What people are watching: trending, popular and anticipated lists ranked
+    /// by viewing, not by page views. Supplies lists, not metadata.
+    case trakt
 }
 
 /// A single value, and the provider that supplied it.

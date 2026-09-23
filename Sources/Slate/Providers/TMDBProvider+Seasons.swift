@@ -11,20 +11,37 @@ extension TMDBProvider {
     /// have. That narrowness is the whole safety argument: choosing an ordering
     /// is a decision, not a lookup — Bleach carries thirteen and they disagree
     /// with each other — and getting it wrong silently renumbers a library.
-    public func seasons(for ids: Identifiers) async throws -> SeasonStructure? {
+    ///
+    /// - Parameter kind: What the ids belong to. TMDB numbers films and shows
+    ///   separately, so a film's TMDB id is also some unrelated show's; pass the
+    ///   kind whenever it is known. `.movie` returns `nil` without a request.
+    ///   Left `nil`, a bare TMDB id is taken to be a show's, and an IMDb id is
+    ///   checked against TMDB's television results.
+    public func seasons(for ids: Identifiers, kind: Kind? = nil) async throws -> SeasonStructure? {
+        try Lookup(ids: ids).validate()
+        try Task.checkCancellation()
+        guard kind != .movie else {
+            Log.seasons.debug("\(Log.describe(ids), privacy: .public) — a film has no seasons")
+            return nil
+        }
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
 
-        guard let showID = try await showID(for: ids) else {
+        let generation = cacheGeneration
+        guard let showID = try await showID(for: ids, knownToBeSeries: kind == .series) else {
             Log.seasons.notice("\(Log.describe(ids), privacy: .public) — no TMDB show id, so no seasons")
             return nil
         }
-        if let cached = seasonCache[showID] {
+        if let cached = cachedSeasons(for: showID) {
             Log.seasons.debug("tmdb \(showID, privacy: .public) — ordering remembered from an earlier lookup")
             return cached
         }
 
-        let resolved = try await resolveSeasons(showID: showID)
-        rememberSeasons(resolved, for: showID)
+        let (resolved, isFallback) = try await resolveSeasons(showID: showID)
+        try Task.checkCancellation()
+        // A fallback after a failed request is an answer for now, not for the
+        // cache's lifetime: remembering it froze Bleach at one season of 366
+        // for an hour because one request met a 429.
+        if generation == cacheGeneration, !isFallback { rememberSeasons(resolved, for: showID) }
         return resolved
     }
 
@@ -35,6 +52,8 @@ extension TMDBProvider {
     /// carries its episodes, so this is for the ordinary path — translate with
     /// ``SeasonStructure/nativeSeason(ofSeason:)`` if you hold a corrected one.
     public func episodes(ofShow showID: Int, nativeSeason: Int) async throws -> [Episode] {
+        guard showID > 0, nativeSeason >= 0 else { throw SlateError.invalidLookup }
+        try Task.checkCancellation()
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
         let url = try URL.build(Self.api, path: "/tv/\(showID)/season/\(nativeSeason)",
                                 query: ["language": language])
@@ -47,7 +66,8 @@ extension TMDBProvider {
                 tmdbID: $0.id,
                 stillURL: Self.imageURL($0.still_path),
                 overview: $0.overview?.nilIfEmpty,
-                rating: $0.vote_average
+                rating: ($0.vote_count ?? 0) > 0 ? $0.vote_average : nil,
+                runtimeMinutes: $0.runtime.flatMap { $0 > 0 ? $0 : nil }
             )
         }
     }
@@ -60,6 +80,8 @@ extension TMDBProvider {
             var air_date: String?
             var still_path: String?
             var vote_average: Double?
+            var vote_count: Int?
+            var runtime: Int?
             var season_number: Int?
             let episode_number: Int
         }
@@ -68,7 +90,9 @@ extension TMDBProvider {
 
     // MARK: - Deciding
 
-    private func resolveSeasons(showID: Int) async throws -> SeasonStructure? {
+    /// The structure, and whether it is TMDB's own seasons standing in because
+    /// the correction could not be fetched.
+    private func resolveSeasons(showID: Int) async throws -> (SeasonStructure?, isFallback: Bool) {
         let page = try await http.json(ShowPage.self,
                                        url: try URL.build(Self.api, path: "/tv/\(showID)",
                                                           query: ["language": language]),
@@ -76,14 +100,14 @@ extension TMDBProvider {
         let native = page.seasons?.map {
             Season(number: $0.season_number, name: $0.name?.nilIfEmpty, episodeCount: $0.episode_count ?? 0)
         } ?? []
-        guard !native.isEmpty else { return nil }
+        guard !native.isEmpty else { return (nil, false) }
 
         let plain = SeasonStructure(nativeSeasons: native, provider: .tmdb)
         guard Self.isFlattened(native) else {
             Log.seasons.debug(
                 "tmdb \(showID, privacy: .public) — \(native.count, privacy: .public) native seasons, not flattened, using TMDB's own"
             )
-            return plain
+            return (plain, false)
         }
         Log.seasons.notice(
             "tmdb \(showID, privacy: .public) — looks flattened (longest season \(native.filter { $0.number > 0 }.map(\.episodeCount).max() ?? 0, privacy: .public) episodes), looking for an episode group"
@@ -93,14 +117,15 @@ extension TMDBProvider {
         // own are in hand, and one null in a community group — or a 429 —
         // used to take the whole show's structure with it, on every lookup.
         do {
-            return try await corrected(showID: showID, native: native) ?? plain
+            return (try await corrected(showID: showID, native: native) ?? plain, false)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            try Task.checkCancellation()
             Log.seasons.error(
-                "tmdb \(showID, privacy: .public) — episode groups unavailable (\(Log.describe(error), privacy: .public)); using TMDB's own seasons"
+                "tmdb \(showID, privacy: .public) — episode groups unavailable (\(Log.describe(error), privacy: .public)); using TMDB's own seasons, not caching them"
             )
-            return plain
+            return (plain, true)
         }
     }
 
@@ -131,6 +156,17 @@ extension TMDBProvider {
             headers: headers
         )
         let seasons = Self.seasons(from: group)
+        // A summary's count can be stale or include duplicates and specials.
+        // Verify that every numbered native episode is actually represented.
+        let covered = Set(seasons.flatMap { $0.episodes ?? [] }.compactMap(\.native))
+        guard native.filter({ $0.number > 0 && $0.episodeCount > 0 }).allSatisfy({ season in
+            (1...season.episodeCount).allSatisfy {
+                covered.contains(EpisodePosition(season: season.number, episode: $0))
+            }
+        }) else {
+            Log.seasons.notice("tmdb \(showID, privacy: .public) — episode group omits native episodes; keeping native seasons")
+            return nil
+        }
         // An ordering that turns out not to divide anything is not a correction,
         // and adopting it would swap one flat season for another while claiming
         // to have fixed something.
@@ -258,29 +294,42 @@ extension TMDBProvider {
     /// season-0 episodes; the rest are numbered 1, 2, 3… in `order`. Taking
     /// `order` itself as the number dropped a community group's first arc
     /// numbered 0 into specials, and gave two groups sharing an order one id.
+    ///
+    /// Several specials groups — "Specials" and "OVAs" side by side — become one
+    /// season 0, numbered straight through where the first of them stood. Two
+    /// seasons both numbered 0 shared an id, and the mapping kept only the
+    /// first: OVA 1 was filed as Special 1.
     static func seasons(from group: EpisodeGroupPayload) -> [Season] {
         var next = 0
-        return group.groups.sorted { $0.order < $1.order }.map { entry in
+        var seasons: [Season] = []
+        var specialsIndex: Int?
+        for entry in group.groups.sorted(by: { $0.order < $1.order }) {
             let isSpecials = !entry.episodes.isEmpty && entry.episodes.allSatisfy { $0.season_number == 0 }
             let number: Int
             if isSpecials { number = 0 } else { next += 1; number = next }
-            return Season(
-                number: number,
-                name: entry.name.nilIfEmpty,
-                episodeCount: entry.episodes.count,
-                episodes: entry.episodes.enumerated().map { index, episode in
-                    Episode(
-                        season: number,
-                        number: index + 1,
-                        title: episode.name?.nilIfEmpty,
-                        airDate: episode.air_date?.asReleaseDate,
-                        tmdbID: episode.id,
-                        native: EpisodePosition(season: episode.season_number,
-                                                episode: episode.episode_number)
-                    )
-                }
-            )
+            let offset = isSpecials ? (specialsIndex.map { seasons[$0].episodes?.count ?? 0 } ?? 0) : 0
+            let episodes = entry.episodes.enumerated().map { index, episode in
+                Episode(
+                    season: number,
+                    number: offset + index + 1,
+                    title: episode.name?.nilIfEmpty,
+                    airDate: episode.air_date?.asReleaseDate,
+                    tmdbID: episode.id,
+                    native: EpisodePosition(season: episode.season_number,
+                                            episode: episode.episode_number)
+                )
+            }
+            if isSpecials, let index = specialsIndex {
+                let merged = (seasons[index].episodes ?? []) + episodes
+                seasons[index] = Season(number: 0, name: seasons[index].name,
+                                        episodeCount: merged.count, episodes: merged)
+                continue
+            }
+            if isSpecials { specialsIndex = seasons.count }
+            seasons.append(Season(number: number, name: entry.name.nilIfEmpty,
+                                  episodeCount: episodes.count, episodes: episodes))
         }
+        return seasons
     }
 
     /// The TMDB id of a film, found by IMDb id when that is all there is.
@@ -288,13 +337,22 @@ extension TMDBProvider {
         try await tmdbID(for: ids) { $0.movie_results.first?.id }
     }
 
-    func showID(for ids: Identifiers) async throws -> Int? {
-        try await tmdbID(for: ids) { $0.tv_results.first?.id }
+    /// A show's TMDB id. A bare TMDB id is taken at its word only when the
+    /// caller knows it is a show's or has nothing better; with an IMDb id to
+    /// hand, TMDB's television results decide, since a film's TMDB id is also
+    /// some unrelated show's.
+    func showID(for ids: Identifiers, knownToBeSeries: Bool = true) async throws -> Int? {
+        if !knownToBeSeries, ids.tmdb != nil, let imdb = ids.imdb {
+            try Lookup(ids: ids).validate()
+            return try await findByIMDb(imdb).tv_results.first?.id
+        }
+        return try await tmdbID(for: ids) { $0.tv_results.first?.id }
     }
 
     private func tmdbID(
         for ids: Identifiers, reading pick: (FindResponse) -> Int?
     ) async throws -> Int? {
+        try Lookup(ids: ids).validate()
         if let id = ids.tmdb { return id }
         guard let imdb = ids.imdb else { return nil }
         return pick(try await findByIMDb(imdb))

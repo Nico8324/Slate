@@ -30,6 +30,41 @@ its date and commits, and an area comes due again when the code under it has cha
 | 2026-09-19 | Anime ids and AniList | `f98a7fe`; Cinema `8bcabf8` | — (Cinema's anime requests carry an absolute episode and no season, so `Lookup.season` has nothing to pass; a shared IMDb id falls back to the name search by design) |
 | 2026-09-19 | Browsing and artwork | `16f3342`, `f98a7fe`, 0.12.1 | — |
 
+## 2026-09-23 working-tree verification
+
+Changes remain uncommitted under `CHANGELOG.md`'s Unreleased section. This pass
+covered HTTP/cache concurrency, matching and aggregation, AniList/bridge lookup,
+and episode-group coverage. It was not a new whole-repository audit.
+
+- `swift test`: 161 tests passed.
+- Xcode's shared `Slate` scheme: 161 tests passed on macOS.
+- iOS Simulator framework build passed. tvOS and visionOS were not built.
+- No live provider credentials or new live-API comparisons were used.
+
+Regression coverage lives in `HTTPTests.swift`, `ImprovementTests.swift`, and
+`ReliabilityTests.swift`, alongside the existing request tests.
+
+### Follow-up checks
+
+- Cache expiry and `clearCache()` must affect both responses and derived season structures.
+- Identical concurrent requests share one fetch; cancellation is per waiter and
+  the last waiter cancels transport. Invalidation cannot restore an older response.
+- Credential rotation must not reuse a response obtained with another credential.
+- Language changes during a season lookup must not restore old-language structures.
+- Explicit lookup IDs outrank provider answers; conflicting snapshots never contribute fields.
+- Year/kind filters continue beyond page one, respecting the documented page caps.
+- AniList GraphQL failures are failures, not cached empty results; equivalent request bodies are stable.
+- Episode-group payloads must contain every native episode, independently of summary counts.
+- Blank values, invalid dates, and nonpositive identifiers must not become usable metadata.
+
+### Known limits
+
+- Search ranks the first eligible page, not every result in the catalogue.
+- Conflicts require contradictory shared IDs or media kinds. Different dates
+  alone are not enough to reject a cour versus a broadcast-series match.
+- Caches are memory-only; `clearCache()` cancels pending requests for that provider.
+- `failures` remains descriptive strings rather than structured error records.
+
 ## Areas
 
 Every area uses the same template: where it lives, when it was last swept, and what to check —

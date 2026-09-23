@@ -19,7 +19,7 @@ struct TMDBRequestTests {
         StubURLProtocol.stub("/movie/603", json: """
         {"id":603,"imdb_id":"tt0133093","title":"The Matrix","original_title":"The Matrix",
          "overview":"A hacker learns the truth.","release_date":"1999-03-30","runtime":136,
-         "genres":[{"name":"Action"}],"vote_average":8.2,"poster_path":"/p.jpg"}
+         "genres":[{"name":"Action"}],"vote_average":8.2,"vote_count":26000,"poster_path":"/p.jpg"}
         """)
 
         let snapshot = try #require(await provider().snapshot(for: Lookup(search: "The Matrix", kind: .movie)))
@@ -91,19 +91,22 @@ struct TMDBRequestTests {
         StubURLProtocol.stub("/tv/30984/episode_groups", json: """
         {"results":[{"id":"g1","name":"TVDB Order","type":1,"group_count":2,"episode_count":80}]}
         """)
+        let remaining = (3...80).map {
+            "{\"id\":\($0),\"season_number\":1,\"episode_number\":\($0)}"
+        }.joined(separator: ",")
         StubURLProtocol.stub("/tv/episode_group/g1", json: """
         {"id":"g1","name":"TVDB Order","groups":[
           {"order":1,"name":"Arc One","episodes":[
             {"id":1,"name":"E1","season_number":1,"episode_number":1},
             {"id":2,"name":"E2","season_number":1,"episode_number":2}]},
           {"order":2,"name":"Arc Two","episodes":[
-            {"id":3,"name":"E3","season_number":1,"episode_number":3}]}]}
+            \(remaining)]}]}
         """)
 
         let structure = try #require(await provider().seasons(for: Identifiers(tmdb: 30984)))
 
         #expect(structure.ordering == .episodeGroup(name: "TVDB Order"))
-        #expect(structure.numberedSeasons.map(\.episodeCount) == [2, 1])
+        #expect(structure.numberedSeasons.map(\.episodeCount) == [2, 78])
         #expect(structure.position(ofAbsolute: 3) == EpisodePosition(season: 2, episode: 1))
         #expect(structure.nativeSeason(ofSeason: 2) == 1)
     }
@@ -264,8 +267,9 @@ extension TMDBRequestTests {
         #expect(snapshot.status == .ended, "TMDB says `Ended`, AniList says `FINISHED`, callers see one word")
         #expect(snapshot.nextEpisodeAirDate != nil)
         #expect(snapshot.lastEpisodeAirDate != nil)
-        // One request for all of it.
-        #expect(StubURLProtocol.requested.filter { $0.path.hasPrefix("/3/tv/1") }.count == 1)
+        // One request for all of it. (A Japanese show also asks for its Japanese
+        // trailers, which is a separate question with its own path.)
+        #expect(StubURLProtocol.requested.filter { $0.path == "/3/tv/1" }.count == 1)
     }
 
     @Test func aFilmCarriesItsFranchise() async throws {
@@ -291,7 +295,7 @@ extension TMDBRequestTests {
         StubURLProtocol.stub("/tv/1/season/2", json: """
         {"episodes":[
           {"id":11,"name":"Pilot","overview":"It begins.","air_date":"2011-04-17",
-           "still_path":"/s.jpg","vote_average":8.1,"season_number":2,"episode_number":1},
+           "still_path":"/s.jpg","vote_average":8.1,"vote_count":120,"season_number":2,"episode_number":1},
           {"id":12,"name":"Second","season_number":2,"episode_number":2}]}
         """)
 

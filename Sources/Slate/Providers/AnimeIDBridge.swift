@@ -1,7 +1,6 @@
 import Foundation
 
-/// Turns a TMDB, IMDb or TVDB id into the AniList, MyAnimeList and AniDB ids
-/// that anime services answer to.
+/// Turns a TMDB or IMDb id into AniList and MyAnimeList ids.
 ///
 /// Anime lives under two id systems that do not meet. TMDB and IMDb number the
 /// broadcast; AniList, MAL and AniDB number the work. Nothing in either system
@@ -10,8 +9,8 @@ import Foundation
 /// found by neither.
 ///
 /// [Fribb/anime-lists](https://github.com/Fribb/anime-lists) publishes the
-/// bridge as one file. Fetched once, projected down to id pairs and the rest
-/// discarded: the download is about 7.5 MB and the useful part of it is a few
+/// bridge as one file. Fetched lazily with a configurable lifetime, projected
+/// down to id pairs, with the rest discarded: the download is about 7.5 MB and the useful part of it is a few
 /// hundred kilobytes.
 ///
 /// **The mapping is many-to-one in the direction this queries.** Two AniDB
@@ -36,7 +35,10 @@ public actor AnimeIDBridge: MetadataProvider {
     private var byTMDBTV: [Int: [Entry]] = [:]
     private var byTMDBMovie: [Int: [Entry]] = [:]
     private var loaded = false
-    private var loading: Task<Void, any Error>?
+    private let downloads = ResponseCache(limit: 0)
+    private let lifetime: Duration
+    private var expires: ContinuousClock.Instant?
+    private var generation = 0
 
     /// Hold **one instance for the life of the app**, and add it to
     /// ``MetadataAggregator`` alongside the other providers — it is in no default
@@ -46,13 +48,31 @@ public actor AnimeIDBridge: MetadataProvider {
     /// The one-instance rule costs more here than anywhere else in Slate. A
     /// provider built per lookup is merely unpaced; a *bridge* built per lookup
     /// downloads 7.5 MB per lookup, because the index it builds is the instance.
-    public init(session: URLSession = .shared) {
+    /// - Parameter session: Session used for requests; injectable for tests.
+    /// - Parameter cacheTTL: Index lifetime in seconds; defaults to 24 hours.
+    ///   Zero disables retention. Finite values are clamped to 0…365 days;
+    ///   non-finite values use the default. Refresh occurs on demand.
+    public init(session: URLSession = .shared, cacheTTL: TimeInterval = 86_400) {
         self.session = session
+        self.lifetime = .seconds(cacheTTL.isFinite ? min(max(0, cacheTTL), 31_536_000) : 86_400)
     }
 
     /// What the bridge knows about one title, or `nil` when it holds nothing or
     /// cannot choose between several candidates.
+    /// Discard the index and cancel any pending download.
+    public func clearCache() async {
+        generation += 1
+        loaded = false
+        expires = nil
+        byIMDb.removeAll()
+        byTMDBTV.removeAll()
+        byTMDBMovie.removeAll()
+        await downloads.removeAll()
+    }
+
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
+        try Task.checkCancellation()
+        try lookup.validate()
         // Only anime ids — no titles, no metadata. This provider exists to make
         // *other* providers reachable.
         guard lookup.ids.aniList == nil || lookup.ids.myAnimeList == nil else { return nil }
@@ -62,6 +82,7 @@ public actor AnimeIDBridge: MetadataProvider {
     }
 
     func entry(for lookup: Lookup) async throws -> Entry? {
+        guard lookup.ids.imdb != nil || lookup.ids.tmdb != nil else { return nil }
         try await load()
 
         var candidates: [Entry] = []
@@ -110,53 +131,33 @@ public actor AnimeIDBridge: MetadataProvider {
         return nil
     }
 
-    /// Fetches and indexes once, however many callers arrive at once.
-    ///
-    /// The download is the whole reason this needs saying. `guard !loaded` alone
-    /// does not hold across the `await`: the suspension releases the actor, so
-    /// every concurrent caller passes the guard and starts its own 7.5 MB fetch —
-    /// and a library scan, which is the only workload that asks about several
-    /// anime at once, is exactly that case. Worse than the bandwidth, ``index(_:)``
-    /// appends, so a second pass files every entry twice and every id then
-    /// resolves to two candidates and therefore to `nil`. The bridge would go
-    /// quiet for everything.
-    ///
-    /// So the *task* is the shared state, not the flag: the first caller starts
-    /// it, the rest await the same one. A failure is not remembered — `loading`
-    /// is cleared either way — because a fetch that failed is worth retrying,
-    /// unlike one that succeeded.
+    /// Share one download; cancelling a caller leaves other waiters running.
     private func load() async throws {
-        if loaded { return }
-        if let loading { return try await loading.value }
-        let task = Task { try await fetchAndIndex() }
-        loading = task
-        defer { loading = nil }
-        try await task.value
-    }
-
-    private func fetchAndIndex() async throws {
-        guard !loaded else { return }
-        // The one large fetch in the package, and the one a consumer cannot
-        // otherwise see happening — it is lazy, it is 7.5 MB, and before 0.10.1
-        // it could silently happen once per concurrent caller. One line at each
-        // end makes "did this download, how often, and what did it hold" a
-        // question the log answers.
-        Log.bridge.notice("loading the id bridge — \(Self.listURL.lastPathComponent, privacy: .public)")
-        let (data, response) = try await session.data(from: Self.listURL)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            Log.bridge.error("id bridge failed — HTTP \(http.statusCode, privacy: .public)")
-            throw SlateError.http(status: http.statusCode, body: "")
+        try Task.checkCancellation()
+        if loaded, let expires, expires > .now { return }
+        let revision = generation
+        let session = self.session
+        let data: Data
+        do {
+            data = try await downloads.data(for: "bridge") {
+                let (data, response) = try await session.data(from: Self.listURL)
+                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    throw SlateError.http(status: http.statusCode, body: "")
+                }
+                return data
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch where loaded {
+            // An index a day old is still right for nearly every title; a failed
+            // refresh used to throw it away and answer nothing at all.
+            Log.bridge.error("refresh failed (\(Log.describe(error), privacy: .public)); keeping the previous index")
+            return
         }
-        // Row by row: one malformed entry used to fail the whole file and
-        // switch the bridge off for the session.
+        try Task.checkCancellation()
+        guard revision == generation else { throw CancellationError() }
+        if loaded, let expires, expires > .now { return }
         index(try JSONDecoder().decode([LossyEntry].self, from: data).compactMap(\.entry))
-        Log.bridge.notice(
-            """
-            id bridge ready — \(data.count, privacy: .public) bytes, \
-            \(self.byIMDb.count, privacy: .public) imdb ids, \
-            \(self.byTMDBTV.count + self.byTMDBMovie.count, privacy: .public) tmdb ids
-            """
-        )
     }
 
     func index(_ entries: [Entry]) {
@@ -181,6 +182,7 @@ public actor AnimeIDBridge: MetadataProvider {
             }
         }
         loaded = true
+        expires = .now.advanced(by: lifetime)
     }
 
     /// A row that decodes to `nil` rather than failing the list.

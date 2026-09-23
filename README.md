@@ -45,6 +45,10 @@ looking. A studio's *slate* is also its roster of titles.
 | **CinemaResolvers** | *Where do I get it?* |
 | **Cinema** | *Where do I watch it?* |
 
+This README describes the working tree, including the changes under
+[Unreleased](CHANGELOG.md#unreleased). The latest recorded release is 0.13.0;
+cache controls and the Xcode project have not been tagged yet.
+
 ## ⚡ Quick start
 
 ```swift
@@ -75,7 +79,7 @@ Every field of `TitleMetadata` is a `Field`, not a bare `String`:
 | `field.best` | The winning value |
 | `field.bestProvider` | Who won it |
 | `field.value(from:)` | What one specific provider said |
-| `field.candidates` | Every answer, winner first — what the losers said stays reachable |
+| `field.candidates` | Every accepted answer, winner first — lower-priority values stay reachable |
 | `result.provenance` | `[FieldKey: Provider]` — the whole record at once |
 
 This exists because of a specific bug. A library that stores merged values behind
@@ -113,7 +117,8 @@ which is the argument making itself.
 | **TMDB** | v4 read token | The IMDb id · western movies & TV · seasons · art · cast · trailer |
 | **AniList** | **none** | Anime detection · romaji & native names · episode counts · voice actors · studio · tags · **relations** |
 | **MDBList** | api key, optional | IMDb · Metacritic · both tomatometers · Letterboxd · Trakt · MyAnimeList |
-| **Fribb bridge** | **none** | Broadcast ids → AniList · MyAnimeList · AniDB ids |
+| **Fribb bridge** | **none** | IMDb or TMDB ids → AniList · MyAnimeList ids |
+| **Trakt** | client id, optional | Lists only: trending · popular · anticipated · box office · most watched |
 
 **Three deliberate silences.** TMDB reports `isAnime` as `nil`, never `false` — it
 has no anime type and its `anime` keyword is volunteer-applied, so AniList
@@ -126,8 +131,44 @@ And AniList reports the country it holds, or nothing — `type: ANIME` covers
 Chinese donghua and Korean aeni, so answering `JP` for everything was a wrong
 fact wearing a provider's name rather than a sensible default.
 
-A provider that fails is **not** an error. It lands in `result.failures` and the
-others still answer.
+A provider failure does not fail an aggregator lookup. It lands in
+`result.failures` and the others still answer. Direct provider calls throw.
+
+### Matching and failures
+
+Use year and kind to distinguish adaptations:
+
+```swift
+let result = await slate.metadata(
+    for: Lookup(search: "Hunter x Hunter", year: 1999, kind: .series)
+)
+for (provider, description) in result.failures {
+    // Display or handle the failure for this provider.
+}
+```
+
+TMDB applies the year to the original film release or the series premiere.
+AniList checks the work's start year and format. An explicit AniList ID takes
+precedence over name, year, and kind hints. Filtered searches continue until a
+page has an eligible match, the provider runs out of pages, or the safety limit
+is reached: 500 pages for TMDB and 100 for AniList. Ranking is within the first
+eligible page, not across the whole catalogue.
+
+The aggregator rejects a provider answer that contradicts an explicit lookup
+ID. Between providers, conflicting shared IDs or media kinds keep the
+higher-priority snapshot and exclude the other snapshot from all fields and
+merged IDs. Rejections appear in `failures`. Missing shared IDs and differing
+release dates alone cannot establish a conflict. Providers omitted from a
+priority list sort after listed providers, alphabetically by provider identifier.
+
+Direct calls expose `SlateError.missingCredential`, `.http`, `.rateLimited`,
+`.invalidLookup`, and `.graphQL`, alongside decoding and transport errors.
+`.conflictingMatch` describes an answer contradicting the lookup ID; the
+aggregator records it in `failures`. A GraphQL error returned with HTTP 200 is a
+failure, not a cached no-match. An empty valid result is still a no-match.
+
+`failures` is a dictionary of descriptions, not typed errors. HTTP error bodies
+may contain provider-supplied details; do not treat them as safe public log text.
 
 ## 📺 Seasons and episodes
 
@@ -142,7 +183,7 @@ else, so other providers are skipped by type rather than consulted and found
 wanting.
 
 ```swift
-let structure = await slate.seasons(for: result.ids)
+let structure = await slate.seasons(for: result.ids, kind: result.kind.best)
 
 structure?.ordering                       // .episodeGroup(name: "TVDB Order")
 structure?.numberedSeasons.count          // 16, not 1
@@ -153,12 +194,17 @@ structure?.nativeRange(ofSeason: 2)       // (season: 1, episodes: 21...41)
 The correction comes from TMDB itself, through `episode_groups` — which means
 **TheTVDB's ordering without a TheTVDB key.**
 
-It intervenes narrowly, and that is the whole safety argument. Only when TMDB is
-clearly flattening (any season of 60+), only towards an ordering that accounts
-for *every* episode the show is said to have, and only by name — `TVDB Order`
-first, then an original-air-date ordering. Story-arc orderings are never a
-fallback: Bleach carries three that split the same 366 episodes 21, 12 and 25
-ways, and picking one arbitrarily silently renumbers somebody's library.
+Correction is considered when any numbered season has at least 60 episodes, or
+when the show has a single numbered season of at least 50. Eligible groups must
+claim to cover the run: `TVDB Order` wins first, then original-air-date order,
+then production or television order. Story-arc, DVD, digital, and absolute
+orderings are not fallbacks.
+
+Before applying a group, Slate verifies that its actual mappings contain every
+native numbered episode. Duplicate entries and specials cannot stand in for a
+missing episode. The result must have more than one numbered season and reduce
+the longest season. If the group is incomplete, unsuitable, or unavailable,
+Slate keeps TMDB's native seasons.
 
 | Question | Answer |
 | :--- | :--- |
@@ -172,7 +218,9 @@ Past the end of a run is left **unmapped, never clamped**. A number beyond the
 last episode means the season list is incomplete or the show was matched wrongly,
 and filing it somewhere plausible hides that instead of showing it.
 
-### Checked against the live API
+### Historical live-API checks
+
+These are earlier observations, not assertions about today’s provider data.
 
 | Corrected | Left alone |
 | :--- | :--- |
@@ -240,10 +288,10 @@ own type** — and the type you reached for *is* the attribution.
 
 ```swift
 await slate.metadata(for: lookup)          // several answer; provenance per field
-await tmdb.candidates(for: "Dragon Ball")  // one answers; the ranking is TMDB's
-await tmdb.titles(in: .popularShows)
-await tmdb.person(id: 287)
-await tmdb.filmography(personID: 287)
+try await tmdb.candidates(for: "Dragon Ball")  // one answers; the ranking is TMDB's
+try await tmdb.titles(in: .popularShows)
+try await tmdb.person(id: 287)
+try await tmdb.filmography(personID: 287)
 ```
 
 Putting a search ranking or a popularity list behind the aggregator would dress
@@ -282,9 +330,9 @@ MetadataAggregator(providers: [..., AnimeIDBridge()])  // no credential
 **It is opt-in and in no default set.** Leaving it out of `providers` does not
 fail, warn, or log — the chain below simply never happens, and an id-only lookup
 comes back without romaji names as though none existed. One consumer held the
-dependency for two releases with it switched off. The cross-map is fetched once,
-lazily, on the first lookup that needs it, so a library with no anime in it never
-downloads anything.
+dependency for two releases with it switched off. The cross-map is fetched lazily
+when a broadcast-id lookup needs it, and refreshed after 24 hours by default.
+Name-only lookups do not download it until another provider supplies an ID.
 
 Each round of a lookup can unlock the next: TMDB finds the IMDb id, the bridge
 turns it into a MyAnimeList id, and MDBList can then be asked for MyAnimeList's
@@ -310,6 +358,59 @@ that hides which country a row belongs to answers a question nobody asked.
 An empty localised synopsis falls back to English rather than rendering blank —
 TMDB returns `""` rather than omitting the field, and `translations` rides on the
 same request, so the fallback costs nothing.
+
+## 🎞 Trailers, crew and recommendations
+
+The details request already fetched credits, videos and — now — recommendations,
+so all three cost nothing extra.
+
+```swift
+result.trailerYouTubeID.best                              // the original version
+result.trailers.best?.best(preferring: ["fr"])?.youTubeID // the French one, dubbed or subtitled
+result.crew.best?.filter { $0.department == .directing }  // Paul Feig
+result.recommendations.best                               // [Candidate]
+```
+
+**Every trailer, not one.** A title has several — *The Housemaid* has three
+Lionsgate trailers in English and four from its French distributor — and which one
+is right depends on who is watching. `trailers` keeps them all; `best(preferring:)`
+ranks a trailer over a teaser, then the languages in the order given, then official,
+then the newest, so the choice is the same on every call. `trailerYouTubeID` is the
+original version: the studio's own cut, and the one that plays well muted.
+
+TMDB filters videos by the lookup's language unless told otherwise, so a French lookup
+used to see only French videos, and a language with none got no trailer at all. The
+details request now asks for the lookup language, English and untagged videos; a title
+made in a third language — a Japanese film's trailer is in Japanese — costs one extra
+request for its own.
+
+**Crew** is a film's directors and writers, and a show's creators. Not the whole
+crew: that runs to hundreds of lines. Television's directors and writers are per
+episode, and the credit a show page carries is the creator's.
+
+## 🖼 Image sizes
+
+Every URL is TMDB's `original` — a 2000×3000 poster is several megabytes — because
+only the caller knows how big it will be drawn:
+
+```swift
+TMDBProvider.resized(posterURL, toFit: 342 * 2)   // w780, for a 342-point card on a Retina screen
+```
+
+## 📈 Lists that read like a home screen
+
+TMDB's own lists rank by its popularity score — page views, votes, searches on TMDB —
+which surfaces titles nobody has heard of and orders the rest oddly next to IMDb's or
+Trakt's charts. Trakt counts people watching:
+
+```swift
+let trakt = TraktProvider(clientID: keychain.traktClientID)   // injected, never stored
+let trending = try await trakt.titles(in: .trendingMovies)    // [Candidate], Trakt's order
+let details = await slate.metadata(for: Lookup(ids: trending[0].ids, kind: .movie))
+```
+
+Lists only: rows carry IMDb and TMDB ids, a title and a year, and no poster — Trakt
+holds none. Scrobbling stays out, for the reason below.
 
 ## ⭐ Ratings, cross-referenced
 
@@ -388,6 +489,49 @@ await tmdb.updateRegion(settings.country)   // a picker, if you offer one, wins
 and not where the person is. It is the best guess available without asking; a
 setting of your own beats it.
 
+## 🔄 Cache lifetime, refresh, and cancellation
+
+Keep provider instances for the life of the app so lookups share pacing, cached
+responses, and in-progress requests.
+
+```swift
+let tmdb = TMDBProvider(accessToken: token, cacheTTL: 900) // 15 minutes
+let anime = AniListProvider(cacheTTL: 3600)
+let bridge = AnimeIDBridge(cacheTTL: 86_400)
+let slate = MetadataAggregator(providers: [anime, tmdb, bridge])
+
+await tmdb.clearCache() // discard responses and derived season structures
+let refreshed = await slate.metadata(for: Lookup(imdbID: "tt2560140"))
+```
+
+| Provider | Default lifetime | `clearCache()` discards |
+| :--- | :--- | :--- |
+| TMDB | 1 hour | Responses and season structures |
+| AniList | 1 hour | GraphQL responses |
+| MDBList | 1 hour | Rating responses |
+| Anime ID bridge | 24 hours | The ID index |
+
+Lifetimes are in seconds, bounded to 0…365 days. Zero disables retention;
+non-finite values use the provider default. Expiry triggers a fetch on the next
+lookup, not a background refresh. Caches are in memory only. Clearing one
+provider does not clear the other providers in an aggregator.
+
+`clearCache()` cancels pending requests for that provider. A TMDB language or
+region change also clears its caches. Old requests cannot repopulate invalidated
+caches. Rotating a credential distinguishes subsequent response-cache entries;
+TMDB also discards its derived season cache.
+
+Identical concurrent requests share one fetch. Cancelling one caller leaves
+other callers running; cancelling the last waiter stops the fetch. Provider
+calls propagate cancellation. Aggregator APIs remain nonthrowing: cancellation
+stops new enrichment rounds and can return a partial result with failures.
+
+```swift
+let task = Task { await slate.metadata(for: Lookup(search: "Dune")) }
+// When the caller no longer needs the result:
+task.cancel()
+```
+
 ## 🚫 Deliberately not here
 
 The plan this was built from named nine providers. Three of them turned out to
@@ -402,7 +546,7 @@ keys a person has to go and get. That number is **two, one of them optional.**
 | **Fanart.tv** | Wanted for logos. TMDB serves logos in every language on the same key. |
 | **Watchmode** | Wanted for availability. TMDB's watch providers cover it, region by region, on the same key. |
 | **OMDb · Trakt ratings** | Redundant since 0.6.0: MDBList returns what both were wanted for, in one call. |
-| **Trakt scrobbling** | Not metadata. It is a record of what a person watched, which belongs to the app that watched it. |
+| **Trakt scrobbling** | Not metadata. It is a record of what a person watched, which belongs to the app that watched it. Trakt's *lists* are in: they rank titles, which is a question Slate answers. |
 | **manami** | Bridges to neither IMDb nor TMDB — the one direction an anime library needs. Tens of megabytes for ids nothing can reach. |
 | **AnimeSchedule · TVmaze** | Wanted for air dates. TMDB's next/last episode and AniList's next airing episode already answer it. |
 
@@ -415,12 +559,37 @@ wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.11.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.13.0")
 ```
 
 ```swift
 .product(name: "Slate", package: "Slate")
 ```
+
+## 🧪 Working on Slate
+
+Open [Slate.xcodeproj](Slate.xcodeproj) and select the **Slate** scheme. It builds
+a framework and has a **SlateTests** test target; there is no application target.
+The Swift package remains the integration path for package consumers.
+
+```sh
+swift test
+xcodebuild test -project Slate.xcodeproj -scheme Slate -destination 'platform=macOS'
+xcodebuild build -project Slate.xcodeproj -scheme Slate -destination 'generic/platform=iOS Simulator'
+xcodebuild docbuild -project Slate.xcodeproj -scheme Slate -destination 'platform=macOS'
+```
+
+The project is checked in. XcodeGen is only needed to regenerate it after adding
+or removing source files or changing [project.yml](project.yml):
+
+```sh
+xcodegen generate
+```
+
+The current changes passed 182 tests through both Swift Package Manager and
+Xcode on macOS, plus an iOS Simulator framework build. Those checks use test
+payloads rather than live provider credentials. tvOS and visionOS are supported
+targets but were not built in this pass.
 
 ## 💻 Platform support
 
@@ -436,19 +605,21 @@ wrong.**
   onto persistent models is the app's job and stays there.
 - **No dependencies.** `Foundation`, `URLSession` and `os`. No package
   dependencies at all.
+- **Dates are days, not moments.** A release or air date is stored as midnight
+  UTC of that calendar day. Format it with a UTC time zone; in the viewer's own,
+  every zone west of UTC shows the day before. AniList's next airing time is the one
+  exception: it is a broadcast moment.
 - **It says what it is doing.** Subsystem `Slate`, a category per area, and a
   line at every point this package returns `nil` rather than guessing — which is
   the shape almost every bug here takes. Catalogue ids and counts are `.public`;
   a search query or a title is `.private`; a credential is in no log line at any
   level, and a test fails the build if one appears.
-- **Responses are remembered for the life of the process**, never written to
-  disk. Staleness is then bounded by how long the app runs, which needs no
-  eviction policy and cannot be wrong after a restart.
 - **Hold one provider instance for the life of the app.** The request allowance
   lives there, so a provider constructed per lookup is paced against nothing —
   and the only symptom is 429s arriving later than they should have.
 - **Testable without a credential.** A `URLProtocol` stub exercises every TMDB
   request path in CI, so the parts that need a key are not the parts nobody
   checks.
-- **A provider may not rank itself, merge, or guess.** It answers with a
-  `Snapshot` of flat optionals; the aggregator does the rest.
+- **Providers select their own matches; the aggregator orders accepted answers.**
+  A provider returns a `Snapshot` of flat optionals and does not assign its own
+  cross-provider priority.

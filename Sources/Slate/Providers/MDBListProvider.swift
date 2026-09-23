@@ -22,10 +22,14 @@ public actor MDBListProvider: MetadataProvider {
 
     /// - Parameter apiKey: sourced by the caller and sent as a bearer token.
     ///   MDBList also accepts `?apikey=`; this deliberately does not use it.
-    public init(apiKey: String, session: URLSession = .shared) {
+    /// - Parameter session: Session used for requests; injectable for tests.
+    /// - Parameter cacheTTL: Cache lifetime in seconds; defaults to one hour.
+    ///   Zero disables retention. Finite values are clamped to 0…365 days;
+    ///   non-finite values use the default. Expired entries refresh on demand.
+    public init(apiKey: String, session: URLSession = .shared, cacheTTL: TimeInterval = 3600) {
         self.apiKey = apiKey
         self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 5),
-                         cache: ResponseCache(), provider: .mdbList)
+                         cache: ResponseCache(ttl: cacheTTL), provider: .mdbList)
     }
 
     public func updateAPIKey(_ apiKey: String) {
@@ -33,7 +37,12 @@ public actor MDBListProvider: MetadataProvider {
         self.apiKey = apiKey
     }
 
+    /// Discard cached responses and cancel in-progress requests.
+    public func clearCache() async { await http.cache?.removeAll() }
+
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
+        try lookup.validate()
+        try Task.checkCancellation()
         guard !apiKey.isEmpty else { throw SlateError.missingCredential(.mdbList) }
         guard let route = Self.route(for: lookup) else {
             // MDBList resolves by id and has no title search, so it stays silent

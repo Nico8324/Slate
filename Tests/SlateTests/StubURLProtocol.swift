@@ -17,8 +17,13 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
 
     /// Matched by substring against the absolute URL, longest pattern first, so
     /// `/tv/1/season/2/images` can be distinguished from `/tv/1/images`.
-    nonisolated(unsafe) private static let routes = Mutex<[(String, Reply)]>([])
-    nonisolated(unsafe) private static let seen = Mutex<[URL]>([])
+    private static let routes = Mutex<[(String, Reply)]>([])
+    private static let seen = Mutex<[URL]>([])
+    private static let responder = Mutex<(@Sendable (URLRequest) async -> Reply)?>(nil)
+
+    static func respond(using handler: @escaping @Sendable (URLRequest) async -> Reply) {
+        responder.withLock { $0 = handler }
+    }
 
     static func stub(_ pattern: String, _ reply: Reply) {
         routes.withLock { $0.append((pattern, reply)) }
@@ -31,6 +36,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     static func reset() {
         routes.withLock { $0.removeAll() }
         seen.withLock { $0.removeAll() }
+        responder.withLock { $0 = nil }
     }
 
     /// Every URL requested, for asserting that a provider asked what it should.
@@ -44,7 +50,8 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func stopLoading() {}
+    private let pending = Mutex<Task<Void, Never>?>(nil)
+    override func stopLoading() { pending.withLock { $0?.cancel() } }
 
     override func startLoading() {
         guard let url = request.url else { return }
@@ -54,12 +61,19 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         let match = Self.routes.withLock { routes in
             routes.filter { text.contains($0.0) }.max { $0.0.count < $1.0.count }?.1
         }
-        let reply = match ?? Reply(status: 404, body: #"{"status_message":"no stub"}"#)
+        let handler = Self.responder.withLock { $0 }
+        let request = self.request
+        let task = Task { @Sendable [self, request] in
+            let reply = await handler?(request)
+                ?? match ?? Reply(status: 404, body: #"{"status_message":"no stub"}"#)
 
-        let response = HTTPURLResponse(url: url, statusCode: reply.status,
-                                       httpVersion: "HTTP/1.1", headerFields: reply.headers)!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(reply.body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
+            guard !Task.isCancelled else { return }
+            let response = HTTPURLResponse(url: url, statusCode: reply.status,
+                                           httpVersion: "HTTP/1.1", headerFields: reply.headers)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data(reply.body.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        }
+        pending.withLock { $0 = task }
     }
 }

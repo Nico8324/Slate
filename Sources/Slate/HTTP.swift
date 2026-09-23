@@ -6,9 +6,15 @@ public enum SlateError: Error, Sendable, Equatable {
     case missingCredential(Provider)
     /// A non-2xx response, with the first 512 bytes of the body for context.
     case http(status: Int, body: String)
-    /// Still rate limited after every retry. Distinct from ``http`` so a caller
+    /// Still rate limited after every retry. Distinct from ``SlateError/http(status:body:)`` so a caller
     /// can tell "slow down" from "this will never work".
     case rateLimited(retryAfter: TimeInterval?)
+    /// Invalid mutable identifiers, a year outside 1…9999, or a negative season.
+    case invalidLookup
+    /// A provider returned an identifier that contradicts an explicit lookup ID.
+    case conflictingMatch(Provider)
+    /// A GraphQL error or missing response data, including failures sent with HTTP 200.
+    case graphQL(Provider)
     case malformedURL
 }
 
@@ -36,44 +42,127 @@ actor RateLimiter {
 
     /// Returns when it is this caller's turn. Turns are handed out in order, so
     /// a burst is spread rather than dropped.
-    func waitForTurn() async {
-        let now = ContinuousClock.now
-        let start = max(now, nextTurn ?? now, pausedUntil ?? now)
-        nextTurn = start.advanced(by: interval)
-        if start > now {
-            try? await Task.sleep(until: start, clock: .continuous)
+    func waitForTurn() async throws {
+        while true {
+            try Task.checkCancellation()
+            let now = ContinuousClock.now
+            let start = max(now, nextTurn ?? now, pausedUntil ?? now)
+            nextTurn = start.advanced(by: interval)
+            if start > now {
+                try await Task.sleep(until: start, clock: .continuous)
+            }
+            // A 429 may have arrived while this turn was sleeping. Requeue
+            // behind the pause, keeping the resumed requests spaced apart.
+            if let pausedUntil, pausedUntil > start { continue }
+            return
         }
     }
 }
 
-/// Remembers responses for the life of the process.
-///
-/// A show page opened twice is two identical requests, and a library scan asks
-/// for the same franchise, the same season and the same id bridge repeatedly.
-/// In memory only and never written to disk: staleness is then bounded by how
-/// long the app runs, which needs no policy and cannot be wrong after a restart.
+/// Bounded, expiring responses and one shared fetch per request key.
 actor ResponseCache {
-    private var entries: [String: Data] = [:]
+    private var entries: [String: (data: Data, expires: ContinuousClock.Instant)] = [:]
     private var order: [String] = []
     private let limit: Int
+    /// A ceiling in bytes as well as entries: a long anime's credits run to
+    /// megabytes, and 256 of those is not a cache anyone budgeted for.
+    private let byteLimit: Int
+    private var bytes = 0
+    let lifetime: Duration
+    private struct Flight {
+        let id: UUID
+        let task: Task<Void, Never>
+        var waiters: [UUID: CheckedContinuation<Data, any Error>]
+    }
+    private var flights: [String: Flight] = [:]
+    var waiterCount: Int { flights.values.reduce(0) { $0 + $1.waiters.count } }
 
-    init(limit: Int = 256) { self.limit = limit }
+    init(limit: Int = 256, ttl: TimeInterval = 3600, byteLimit: Int = 32 * 1024 * 1024) {
+        self.limit = max(0, limit)
+        self.byteLimit = max(0, byteLimit)
+        lifetime = .seconds(ttl.isFinite ? min(max(0, ttl), 31_536_000) : 3600)
+    }
 
-    func data(for key: String) -> Data? { entries[key] }
+    func data(for key: String) -> Data? {
+        guard let entry = entries[key] else { return nil }
+        guard entry.expires > .now else {
+            bytes -= entry.data.count
+            entries[key] = nil
+            order.removeAll { $0 == key }
+            return nil
+        }
+        return entry.data
+    }
 
     func store(_ data: Data, for key: String) {
-        if entries.updateValue(data, forKey: key) == nil { order.append(key) }
-        // Oldest out first. A metadata cache has no hot set worth tracking —
-        // the request that matters is the one a person just made.
-        while order.count > limit, let oldest = order.first {
-            order.removeFirst()
-            entries.removeValue(forKey: oldest)
+        // "Zero disables retention" — storing an entry already expired still
+        // held the body in memory until something evicted it.
+        guard lifetime > .zero, data.count <= byteLimit else { return }
+        if let previous = entries.updateValue((data, .now.advanced(by: lifetime)), forKey: key) {
+            bytes -= previous.data.count
+        } else {
+            order.append(key)
+        }
+        bytes += data.count
+        while order.count > limit || bytes > byteLimit, !order.isEmpty {
+            if let evicted = entries.removeValue(forKey: order.removeFirst()) { bytes -= evicted.data.count }
         }
     }
 
+    func data(for key: String, load: @escaping @Sendable () async throws -> Data) async throws -> Data {
+        try Task.checkCancellation()
+        if let cached = data(for: key) { return cached }
+        let waiter = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if var flight = flights[key] {
+                    flight.waiters[waiter] = continuation
+                    flights[key] = flight
+                } else {
+                    let id = UUID()
+                    let task = Task {
+                        let result: Result<Data, any Error>
+                        do { result = .success(try await load()) }
+                        catch { result = .failure(error) }
+                        finish(key, id: id, result: result)
+                    }
+                    flights[key] = Flight(id: id, task: task, waiters: [waiter: continuation])
+                }
+            }
+        } onCancel: {
+            Task { await self.cancel(key, waiter: waiter) }
+        }
+    }
+
+    private func finish(_ key: String, id: UUID, result: Result<Data, any Error>) {
+        guard let flight = flights[key], flight.id == id else { return }
+        flights[key] = nil
+        if case .success(let data) = result { store(data, for: key) }
+        for waiter in flight.waiters.values { waiter.resume(with: result) }
+    }
+
+    private func cancel(_ key: String, waiter: UUID) {
+        guard var flight = flights[key], let continuation = flight.waiters.removeValue(forKey: waiter) else { return }
+        continuation.resume(throwing: CancellationError())
+        if flight.waiters.isEmpty {
+            flight.task.cancel()
+            flights[key] = nil
+        } else {
+            flights[key] = flight
+        }
+    }
+
+    /// Invalidated requests cannot repopulate the cache, even if transport ignores cancellation.
     func removeAll() {
         entries.removeAll()
         order.removeAll()
+        bytes = 0
+        let pending = flights.values
+        flights.removeAll()
+        for flight in pending {
+            flight.task.cancel()
+            for waiter in flight.waiters.values { waiter.resume(throwing: CancellationError()) }
+        }
     }
 }
 
@@ -90,14 +179,15 @@ struct HTTP: Sendable {
     /// rather than as a bare 401.
     var provider: Provider?
 
-    func json<Response: Decodable>(
+    func json<Response: Decodable & SendableMetatype>(
         _ type: Response.Type,
         url: URL,
         method: String = "GET",
         headers: [String: String] = [:],
         body: Data? = nil
     ) async throws -> Response {
-        var request = URLRequest(url: url)
+        try Task.checkCancellation()
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
         request.httpBody = body
         for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
@@ -105,17 +195,24 @@ struct HTTP: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        // Keyed by method, URL and body: AniList is a POST whose URL never
-        // changes, so the URL alone would collapse every query into one entry.
-        // The body verbatim, not its hash: a hash collision would hand back
-        // another query's JSON, and nothing downstream could tell.
-        let key = "\(method) \(url.absoluteString) \(body?.base64EncodedString() ?? "")"
-        let endpoint = Log.redactingQuery(url)
-        if let cached = await cache?.data(for: key) {
-            Log.http.debug("cache hit \(method, privacy: .public) \(endpoint, privacy: .public)")
-            return try JSONDecoder().decode(Response.self, from: cached)
+        // Headers distinguish credentials and representations. Keys stay in memory and are never logged.
+        let headerKey = headers.sorted { $0.key < $1.key }.map { [$0.key.lowercased(), $0.value] }
+        let encodedHeaders = try JSONEncoder().encode(headerKey).base64EncodedString()
+        let key = "\(method) \(url.absoluteString) \(body?.base64EncodedString() ?? "") \(encodedHeaders)"
+        let prepared = request
+        let data: Data
+        if let cache {
+            data = try await cache.data(for: key) { try await fetch(type, request: prepared) }
+        } else {
+            data = try await fetch(type, request: prepared)
         }
+        try Task.checkCancellation()
+        return try JSONDecoder().decode(type, from: data)
+    }
 
+    private func fetch<Response: Decodable & SendableMetatype>(_ type: Response.Type, request: URLRequest) async throws -> Data {
+        let endpoint = Log.redactingQuery(request.url!)
+        let method = request.httpMethod ?? "GET"
         var lastRetryAfter: TimeInterval?
         var lastStatus = 0
         var lastBody = Data()
@@ -127,11 +224,24 @@ struct HTTP: Sendable {
             Log.http.debug(
                 "\(method, privacy: .public) \(endpoint, privacy: .public) attempt \(attempt, privacy: .public)/\(max(self.attempts, 1), privacy: .public)"
             )
-            await limiter?.waitForTurn()
-            let (data, response) = try await session.data(for: request)
+            try await limiter?.waitForTurn()
+            try Task.checkCancellation()
+            let data: Data, response: URLResponse
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch let error as URLError where Self.isTransient(error) && attempt < attempts {
+                // A dropped connection is the network's hiccup, not the provider's
+                // answer; only 429 and 5xx were being retried.
+                Log.http.notice(
+                    "\(endpoint, privacy: .public) — \(error.code.rawValue, privacy: .public), retrying in \(Self.backoff(attempt), privacy: .public)s"
+                )
+                try await Task.sleep(for: .seconds(Self.backoff(attempt)))
+                continue
+            }
             guard let http = response as? HTTPURLResponse else {
                 Log.http.debug("\(endpoint, privacy: .public) — no HTTP response, decoding anyway")
-                return try JSONDecoder().decode(Response.self, from: data)
+                _ = try JSONDecoder().decode(Response.self, from: data)
+                return data
             }
 
             if http.statusCode == 429 || (500..<600).contains(http.statusCode) {
@@ -157,7 +267,7 @@ struct HTTP: Sendable {
                 // `waitForTurn()` on the next attempt honours it — sleeping here
                 // too would serve the wait twice.
                 if limiter == nil || http.statusCode != 429 {
-                    try? await Task.sleep(for: .seconds(retryAfter ?? Self.backoff(attempt)))
+                    try await Task.sleep(for: .seconds(retryAfter ?? Self.backoff(attempt)))
                 }
                 continue
             }
@@ -172,9 +282,8 @@ struct HTTP: Sendable {
                 throw SlateError.http(status: http.statusCode,
                                       body: String(decoding: data.prefix(512), as: UTF8.self))
             }
-            let decoded: Response
             do {
-                decoded = try JSONDecoder().decode(Response.self, from: data)
+                _ = try JSONDecoder().decode(Response.self, from: data)
             } catch {
                 // The failure a caller cannot diagnose from the outside: a 200
                 // whose shape changed. Says which type failed to decode, never
@@ -190,8 +299,7 @@ struct HTTP: Sendable {
             // Stored only after decoding: a body that does not parse is not an
             // answer, and caching it would repeat the failure without the round
             // trip that might have fixed it.
-            await cache?.store(data, for: key)
-            return decoded
+            return data
         }
         // Rate limited only if that is what the last answer was. A server failing with 5xx on
         // every attempt is "this is broken", which callers treat differently from "slow down".
@@ -208,7 +316,7 @@ struct HTTP: Sendable {
                 .trimmingCharacters(in: .whitespaces) else { return nil }
         // Seconds, or an HTTP date — both are allowed, and the date form fell back to guessing.
         let seconds = TimeInterval(value) ?? httpDate.date(from: value).map { $0.timeIntervalSinceNow }
-        guard let seconds else { return nil }
+        guard let seconds, seconds.isFinite else { return nil }
         // A server having a bad day can ask for minutes; waiting that long inside one lookup is
         // worse than reporting it. Sixty, not thirty: AniList's window is a minute, and a retry
         // sent before it resets only spends the attempt.
@@ -222,6 +330,11 @@ struct HTTP: Sendable {
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
         return formatter
     }()
+
+    static func isTransient(_ error: URLError) -> Bool {
+        [.timedOut, .networkConnectionLost, .cannotConnectToHost, .dnsLookupFailed, .notConnectedToInternet]
+            .contains(error.code)
+    }
 
     static func backoff(_ attempt: Int) -> TimeInterval {
         min(pow(2, Double(attempt - 1)), 8)
@@ -242,7 +355,7 @@ extension String {
     /// `"2019-04-06"` and `"2019"` both appear in provider payloads.
     var asReleaseDate: Date? {
         for formatter in Self.releaseDateFormatters {
-            if let date = formatter.date(from: self) { return date }
+            if let date = formatter.date(from: self), formatter.string(from: date) == self { return date }
         }
         return nil
     }

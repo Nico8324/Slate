@@ -9,16 +9,16 @@ import Foundation
 /// a merged one — the type a caller reaches for *is* the attribution.
 extension TMDBProvider {
 
+    /// The last page TMDB serves; past it the API answers with an error, not an
+    /// empty page, which ended an infinite scroll on a thrown request.
+    public static let lastPage = 500
+
     /// What a search might have meant, in TMDB's own order.
     ///
     /// ``snapshot(for:)`` collapses this to one title, which is right when a
     /// title is unambiguous and wrong when a person should choose. "Dragon Ball"
     /// resolved to Dragon Ball Z for as long as nobody could see the
     /// alternatives.
-    /// The last page TMDB serves; past it the API answers with an error, not an
-    /// empty page, which ended an infinite scroll on a thrown request.
-    public static let lastPage = 500
-
     public func candidates(for query: String, kind: Kind? = nil, page: Int = 1) async throws -> [Candidate] {
         guard (1...Self.lastPage).contains(page) else { return [] }
         let path = switch kind {

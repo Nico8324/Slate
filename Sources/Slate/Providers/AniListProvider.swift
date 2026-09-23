@@ -18,15 +18,24 @@ public struct AniListProvider: MetadataProvider, Sendable {
     /// `AniListProvider()` called per lookup is paced against nothing and the
     /// only symptom is 429s arriving later than they should have. Nothing in the
     /// type signature says this, which is why it is written here.
-    public init(session: URLSession = .shared) {
+    /// - Parameter session: Session used for requests; injectable for tests.
+    /// - Parameter cacheTTL: Cache lifetime in seconds; defaults to one hour.
+    ///   Zero disables retention. Finite values are clamped to 0…365 days;
+    ///   non-finite values use the default. Expired entries refresh on demand.
+    public init(session: URLSession = .shared, cacheTTL: TimeInterval = 3600) {
         // AniList allows about ninety requests a minute. Staying just inside it
         // is the difference between a library scan finishing and a wall of 429s
         // that reads as the provider being down.
         self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 1.4),
-                         cache: ResponseCache(), provider: .aniList)
+                         cache: ResponseCache(ttl: cacheTTL), provider: .aniList)
     }
 
+    /// Discard cached responses and cancel in-progress requests.
+    public func clearCache() async { await http.cache?.removeAll() }
+
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
+        try lookup.validate()
+        try Task.checkCancellation()
         // AniList numbers the work, not the broadcast, so it cannot answer an
         // IMDb or TMDB id directly — a name, or an AniList id someone else
         // supplied, is the only way in. `AnimeIDBridge` is that someone: it
@@ -42,28 +51,38 @@ public struct AniListProvider: MetadataProvider, Sendable {
             return nil
         }
 
-        let body = try JSONEncoder().encode(Request(
-            query: Self.query,
-            variables: .init(id: lookup.ids.aniList, search: lookup.query)
-        ))
-
-        let candidates: [Media]
-        do {
-            candidates = try await http.json(Response.self, url: Self.endpoint, method: "POST",
-                                             headers: ["Accept": "application/json"],
-                                             body: body).data?.Page?.media ?? []
-        } catch SlateError.http(let status, _) where status == 404 {
-            Log.aniList.debug("404 — no such anime. Not a failure")
-            return nil // AniList reports "no such anime" as a 404. Not a failure.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        // A filtered search keeps paging until something passes the filter; an
+        // unfiltered one is decided by relevance within the first few pages, and
+        // paging on only spent a minute of AniList's allowance on a miss.
+        let pageLimit = lookup.ids.aniList != nil ? 1 : (lookup.year != nil || lookup.kind != nil ? 20 : 3)
+        for page in 1...pageLimit {
+            try Task.checkCancellation()
+            let body = try encoder.encode(Request(
+                query: Self.query,
+                variables: .init(id: lookup.ids.aniList, search: lookup.ids.aniList == nil ? lookup.query : nil, page: page)
+            ))
+            let response: Response
+            do {
+                response = try await http.json(Response.self, url: Self.endpoint, method: "POST",
+                                               headers: ["Accept": "application/json"], body: body)
+            } catch SlateError.http(let status, _) where status == 404 {
+                return nil
+            }
+            let candidates = response.data?.Page?.media ?? []
+            if let media = pick(from: candidates, lookup: lookup) {
+                Log.aniList.debug("matched anilist \(media.id, privacy: .public)")
+                var result = snapshot(from: media)
+                if lookup.ids.aniList == nil, let asked = lookup.query?.normalizedForMatching {
+                    result.matchedLoosely = !media.allNames.contains { $0.normalizedForMatching == asked }
+                }
+                return result
+            }
+            guard lookup.ids.aniList == nil, !candidates.isEmpty,
+                  response.data?.Page?.pageInfo?.hasNextPage == true else { break }
         }
-        guard let media = pick(from: candidates, lookup: lookup) else {
-            Log.aniList.notice(
-                "\(candidates.count, privacy: .public) candidates, none of them a plausible match for the requested name"
-            )
-            return nil
-        }
-        Log.aniList.debug("matched anilist \(media.id, privacy: .public)")
-        return snapshot(from: media)
+        return nil
     }
 
     /// Which of several entries was asked for.
@@ -92,9 +111,13 @@ public struct AniListProvider: MetadataProvider, Sendable {
     /// AniList search is fuzzy and will answer for western titles it should not.
     /// Accept a hit only when one of its names actually looks like the query.
     private func matches(_ media: Media, lookup: Lookup) -> Bool {
-        guard lookup.ids.aniList == nil, let query = lookup.query?.normalizedForMatching, !query.isEmpty else {
-            return true // Looked up by id, or nothing to check against.
+        guard media.id > 0 else { return false }
+        if let id = lookup.ids.aniList { return media.id == id }
+        if let year = lookup.year, media.startDate?.year != year { return false }
+        if let kind = lookup.kind {
+            guard let format = media.format, (format == "MOVIE" ? Kind.movie : .series) == kind else { return false }
         }
+        guard let query = lookup.query?.normalizedForMatching, !query.isEmpty else { return false }
         return media.allNames.lazy.map(\.normalizedForMatching).contains { name in
             name.looksLikeTheSameTitleAs(query)
         }
@@ -142,8 +165,9 @@ public struct AniListProvider: MetadataProvider, Sendable {
     // MARK: - GraphQL
 
     private static let query = """
-    query ($id: Int, $search: String) {
-      Page(perPage: 5) {
+    query ($id: Int, $search: String, $page: Int) {
+      Page(perPage: 25, page: $page) {
+        pageInfo { hasNextPage }
         media(id: $id, search: $search, type: ANIME) {
           id idMal format episodes duration genres averageScore bannerImage synonyms description
           popularity status countryOfOrigin
@@ -169,14 +193,29 @@ public struct AniListProvider: MetadataProvider, Sendable {
         struct Variables: Encodable {
             let id: Int?
             let search: String?
+            let page: Int
         }
     }
 
     private struct Response: Decodable {
         var data: Payload?
+        private enum CodingKeys: String, CodingKey { case data, errors }
+        private struct Failure: Decodable {}
+        init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            guard (try values.decodeIfPresent([Failure].self, forKey: .errors) ?? []).isEmpty else {
+                throw SlateError.graphQL(.aniList)
+            }
+            data = try values.decodeIfPresent(Payload.self, forKey: .data)
+            guard data?.Page?.media != nil else { throw SlateError.graphQL(.aniList) }
+        }
         struct Payload: Decodable {
             var Page: PageResult?
-            struct PageResult: Decodable { var media: [AniListProvider.Media]? }
+            struct PageResult: Decodable {
+                var media: [AniListProvider.Media]?
+                var pageInfo: PageInfo?
+                struct PageInfo: Decodable { var hasNextPage: Bool? }
+            }
         }
     }
 
@@ -349,14 +388,18 @@ public struct AniListProvider: MetadataProvider, Sendable {
             var month: Int?
             var day: Int?
 
+            /// Only a complete date. `{year: 2027}` is an announcement, not the
+            /// first of January — and AniList outranks TMDB, so a guess here
+            /// replaced TMDB's real date.
             var date: Date? {
-                guard let year else { return nil }
+                guard let year, (1...9999).contains(year), let month, let day else { return nil }
                 var components = DateComponents()
                 components.calendar = Calendar(identifier: .gregorian)
                 components.timeZone = TimeZone(identifier: "UTC")
                 components.year = year
-                components.month = month ?? 1
-                components.day = day ?? 1
+                components.month = month
+                components.day = day
+                guard components.isValidDate(in: components.calendar!) else { return nil }
                 return components.date
             }
         }

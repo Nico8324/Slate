@@ -16,10 +16,16 @@ public struct Lookup: Sendable, Hashable {
         kind: Kind? = nil, season: Int? = nil
     ) {
         self.ids = ids
-        self.query = query
+        self.query = query?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.year = year
         self.kind = kind
         self.season = season
+    }
+
+    func validate() throws {
+        guard ids == ids.validated,
+              year.map({ (1...9999).contains($0) }) ?? true,
+              season.map({ $0 >= 0 }) ?? true else { throw SlateError.invalidLookup }
     }
 
     /// The id path.
@@ -52,6 +58,9 @@ public struct Snapshot: Sendable, Equatable {
     public var title: String?
     public var originalTitle: String?
     public var overview: String?
+    /// A calendar day, stored as **midnight UTC** of that day — providers give a
+    /// date, not a moment. Format it with a UTC time zone; in the viewer's own,
+    /// every zone west of UTC shows the day before.
     public var releaseDate: Date?
     public var runtimeMinutes: Int?
     public var episodeCount: Int?
@@ -67,6 +76,12 @@ public struct Snapshot: Sendable, Equatable {
     /// A YouTube key, not a URL — a player wants the id.
     public var trailerYouTubeID: String?
     public var cast: [CastMember]?
+    /// Directors, writers and creators. See ``CrewMember``.
+    public var crew: [CrewMember]?
+    /// Every trailer and clip the provider holds, in every language asked for.
+    public var trailers: [Trailer]?
+    /// Titles the provider suggests to someone who liked this one.
+    public var recommendations: [Candidate]?
     /// One entry per site, never averaged.
     public var ratings: [Rating]?
     /// Where it can be watched, in the region asked for.
@@ -86,11 +101,15 @@ public struct Snapshot: Sendable, Equatable {
     public var status: ReleaseStatus?
     /// Sequels, prequels, side stories. See ``Relation``.
     public var relations: [Relation]?
-    /// When the next episode airs, for a series still running.
+    /// When the next episode airs, for a series still running. AniList states
+    /// the broadcast moment; TMDB only the day, as midnight UTC.
     public var nextEpisodeAirDate: Date?
     public var lastEpisodeAirDate: Date?
     /// Names to search by, this provider's preferred order first.
     public var searchNames: [String]
+    /// Whether the provider matched a name only approximately. A loose match
+    /// loses a conflict with a precise one, whatever the provider priority.
+    var matchedLoosely = false
 
     public init(
         ids: Identifiers = .init(),
@@ -109,6 +128,9 @@ public struct Snapshot: Sendable, Equatable {
         contentRating: String? = nil,
         trailerYouTubeID: String? = nil,
         cast: [CastMember]? = nil,
+        crew: [CrewMember]? = nil,
+        trailers: [Trailer]? = nil,
+        recommendations: [Candidate]? = nil,
         ratings: [Rating]? = nil,
         watchOptions: [WatchOption]? = nil,
         keywords: [String]? = nil,
@@ -122,34 +144,37 @@ public struct Snapshot: Sendable, Equatable {
         lastEpisodeAirDate: Date? = nil,
         searchNames: [String] = []
     ) {
-        self.ids = ids
+        self.ids = ids.validated
         self.kind = kind
-        self.title = title
-        self.originalTitle = originalTitle
-        self.overview = overview
+        self.title = title?.nilIfEmpty
+        self.originalTitle = originalTitle?.nilIfEmpty
+        self.overview = overview?.nilIfEmpty
         self.releaseDate = releaseDate
-        self.runtimeMinutes = runtimeMinutes
-        self.episodeCount = episodeCount
-        self.genres = genres
-        self.rating = rating
+        self.runtimeMinutes = runtimeMinutes.flatMap { $0 > 0 ? $0 : nil }
+        self.episodeCount = episodeCount.flatMap { $0 > 0 ? $0 : nil }
+        self.genres = genres?.deduplicatedNames.nilIfEmpty
+        self.rating = rating.flatMap { $0.isFinite && (0...10).contains($0) ? $0 : nil }
         self.posterURL = posterURL
         self.backdropURL = backdropURL
         self.isAnime = isAnime
-        self.contentRating = contentRating
-        self.trailerYouTubeID = trailerYouTubeID
-        self.cast = cast
+        self.contentRating = contentRating?.nilIfEmpty
+        self.trailerYouTubeID = trailerYouTubeID?.nilIfEmpty
+        self.cast = cast?.mergedByPerson.nilIfEmpty
+        self.crew = crew?.nilIfEmpty
+        self.trailers = trailers?.nilIfEmpty
+        self.recommendations = recommendations?.nilIfEmpty
         self.ratings = ratings
         self.watchOptions = watchOptions
-        self.keywords = keywords
-        self.studios = studios
-        self.originalLanguage = originalLanguage
-        self.originCountries = originCountries
+        self.keywords = keywords?.deduplicatedNames.nilIfEmpty
+        self.studios = studios?.deduplicatedNames.nilIfEmpty
+        self.originalLanguage = originalLanguage?.nilIfEmpty
+        self.originCountries = originCountries?.deduplicatedNames.nilIfEmpty
         self.franchise = franchise
         self.status = status
         self.relations = relations
         self.nextEpisodeAirDate = nextEpisodeAirDate
         self.lastEpisodeAirDate = lastEpisodeAirDate
-        self.searchNames = searchNames
+        self.searchNames = searchNames.deduplicatedNames
     }
 }
 

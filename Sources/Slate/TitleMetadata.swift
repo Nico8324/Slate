@@ -15,10 +15,21 @@ public struct Identifiers: Sendable, Hashable {
     public var myAnimeList: Int?
 
     public init(imdb: String? = nil, tmdb: Int? = nil, aniList: Int? = nil, myAnimeList: Int? = nil) {
-        self.imdb = imdb
-        self.tmdb = tmdb
-        self.aniList = aniList
-        self.myAnimeList = myAnimeList
+        self.imdb = imdb.flatMap { $0.range(of: #"^tt[0-9]+$"#, options: .regularExpression) != nil ? $0 : nil }
+        self.tmdb = tmdb.flatMap { $0 > 0 ? $0 : nil }
+        self.aniList = aniList.flatMap { $0 > 0 ? $0 : nil }
+        self.myAnimeList = myAnimeList.flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    var validated: Identifiers {
+        Identifiers(imdb: imdb, tmdb: tmdb, aniList: aniList, myAnimeList: myAnimeList)
+    }
+
+    func conflicts(with other: Identifiers) -> Bool {
+        (imdb != nil && other.imdb != nil && imdb != other.imdb)
+            || (tmdb != nil && other.tmdb != nil && tmdb != other.tmdb)
+            || (aniList != nil && other.aniList != nil && aniList != other.aniList)
+            || (myAnimeList != nil && other.myAnimeList != nil && myAnimeList != other.myAnimeList)
     }
 
 
@@ -41,6 +52,7 @@ public enum FieldKey: String, Sendable, Hashable, CaseIterable {
     case kind, title, originalTitle, overview, releaseDate, runtimeMinutes
     case episodeCount, genres, rating, posterURL, backdropURL, isAnime
     case contentRating, trailerYouTubeID, cast, ratings
+    case crew, trailers, recommendations
     case watchOptions, keywords, studios, originalLanguage, originCountries
     case franchise, status, nextEpisodeAirDate, lastEpisodeAirDate, relations
 }
@@ -67,6 +79,13 @@ public struct TitleMetadata: Sendable, Equatable {
     /// A YouTube key, not a URL — a player wants the id.
     public var trailerYouTubeID: Field<String>
     public var cast: Field<[CastMember]>
+    /// Directors, writers and creators. See ``CrewMember``.
+    public var crew: Field<[CrewMember]>
+    /// Every trailer, in every language fetched. ``trailerYouTubeID`` is the
+    /// original-version pick; choose another with ``Swift/Array/best(preferring:)``.
+    public var trailers: Field<[Trailer]>
+    /// Titles the provider suggests to someone who liked this one.
+    public var recommendations: Field<[Candidate]>
     /// Every site's score, per source. See ``Rating``.
     public var ratings: Field<[Rating]>
     /// Where it can be watched, in the region asked for. See ``WatchOption``.
@@ -87,8 +106,9 @@ public struct TitleMetadata: Sendable, Equatable {
     /// release group names a file.
     public var searchNames: [String]
 
-    /// Providers that were asked and failed, by description. A failure here is
-    /// not an error: the other providers still answered.
+    /// Request failures and rejected conflicting matches, by provider.
+    /// Other accepted providers still contribute. These are descriptions, not typed
+    /// errors; HTTP body details may be unsuitable for public logs.
     public var failures: [Provider: String]
 
     public init(
@@ -108,6 +128,9 @@ public struct TitleMetadata: Sendable, Equatable {
         contentRating: Field<String> = .init(),
         trailerYouTubeID: Field<String> = .init(),
         cast: Field<[CastMember]> = .init(),
+        crew: Field<[CrewMember]> = .init(),
+        trailers: Field<[Trailer]> = .init(),
+        recommendations: Field<[Candidate]> = .init(),
         ratings: Field<[Rating]> = .init(),
         watchOptions: Field<[WatchOption]> = .init(),
         keywords: Field<[String]> = .init(),
@@ -138,6 +161,9 @@ public struct TitleMetadata: Sendable, Equatable {
         self.contentRating = contentRating
         self.trailerYouTubeID = trailerYouTubeID
         self.cast = cast
+        self.crew = crew
+        self.trailers = trailers
+        self.recommendations = recommendations
         self.ratings = ratings
         self.watchOptions = watchOptions
         self.keywords = keywords
@@ -201,6 +227,9 @@ extension TitleMetadata {
         case .contentRating: contentRating.candidates.map(\.provider)
         case .trailerYouTubeID: trailerYouTubeID.candidates.map(\.provider)
         case .cast: cast.candidates.map(\.provider)
+        case .crew: crew.candidates.map(\.provider)
+        case .trailers: trailers.candidates.map(\.provider)
+        case .recommendations: recommendations.candidates.map(\.provider)
         case .ratings: ratings.candidates.map(\.provider)
         case .watchOptions: watchOptions.candidates.map(\.provider)
         case .keywords: keywords.candidates.map(\.provider)

@@ -25,6 +25,8 @@ public struct Episode: Sendable, Equatable, Identifiable {
     /// The provider's own score for this episode, 0...10. Anime in particular
     /// has episodes people seek out by name.
     public var rating: Double?
+    /// Running time, where the provider states it per episode.
+    public var runtimeMinutes: Int?
     /// Where the provider files this episode in its *own* numbering, when that
     /// differs from the season structure being presented. Stated by the API,
     /// never inferred — which is what makes the two views translatable.
@@ -35,7 +37,7 @@ public struct Episode: Sendable, Equatable, Identifiable {
     public init(
         season: Int, number: Int, title: String? = nil, airDate: Date? = nil,
         tmdbID: Int? = nil, stillURL: URL? = nil, overview: String? = nil,
-        rating: Double? = nil, native: EpisodePosition? = nil
+        rating: Double? = nil, runtimeMinutes: Int? = nil, native: EpisodePosition? = nil
     ) {
         self.season = season
         self.number = number
@@ -45,6 +47,7 @@ public struct Episode: Sendable, Equatable, Identifiable {
         self.stillURL = stillURL
         self.overview = overview
         self.rating = rating
+        self.runtimeMinutes = runtimeMinutes
         self.native = native
     }
 }
@@ -65,7 +68,7 @@ public struct Season: Sendable, Equatable, Identifiable {
     public init(number: Int, name: String? = nil, episodeCount: Int, episodes: [Episode]? = nil) {
         self.number = number
         self.name = name
-        self.episodeCount = episodeCount
+        self.episodeCount = max(0, episodeCount)
         self.episodes = episodes
     }
 }

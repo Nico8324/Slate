@@ -49,13 +49,16 @@ import Testing
         // convention that nothing checks is one edit from being untrue —
         // `.private` redacts a line for a reader, it does not stop the string
         // being built.
-        let sources = FileManager.default.enumerator(atPath: "Sources")?
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let sources = FileManager.default.enumerator(atPath: sourceRoot.path)?
             .compactMap { $0 as? String }
             .filter { $0.hasSuffix(".swift") } ?? []
-        #expect(!sources.isEmpty, "the source tree should be readable from the test working directory")
+        #expect(!sources.isEmpty, "the source tree should be readable relative to this test file")
 
         for file in sources {
-            let text = try String(contentsOfFile: "Sources/" + file, encoding: .utf8)
+            let text = try String(contentsOf: sourceRoot.appendingPathComponent(file), encoding: .utf8)
             for line in text.split(separator: "\n") where line.contains("Log.") && line.contains("\\(") {
                 for forbidden in ["accessToken", "apiKey", "headers", "Bearer"] {
                     #expect(!line.contains(forbidden),

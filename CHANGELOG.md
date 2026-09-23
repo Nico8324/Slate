@@ -6,8 +6,87 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Crew.** `crew` carries a film's directors and writers and a show's creators, from
+  the credits the details request already fetched. `CrewMember.id` is person + job.
+- **Every trailer.** `trailers` lists each YouTube video with its kind, language,
+  region, official flag and date; `[Trailer].best(preferring:)` ranks them — trailer
+  over teaser, the preferred languages in order, official, then newest.
+- **Recommendations.** `recommendations` rides on the same details request.
+- **Episode running times.** `Episode.runtimeMinutes`, from TMDB's season pages.
+- **Image sizes.** `TMDBProvider.resized(_:toFit:)` returns a TMDB image at the
+  smallest rendered width that fits, instead of the multi-megabyte `original`.
+- **Trakt lists.** `TraktProvider.titles(in:)` — trending, popular, anticipated,
+  box office and most watched, ranked by viewing rather than TMDB's page-view
+  popularity. Lists only; rows carry IMDb and TMDB ids. New `Provider.trakt`.
+- `seasons(for:kind:)` on the aggregator and on `TMDBProvider`.
+- `Slate.xcodeproj`, a shared library/test scheme, and `project.yml` for regeneration.
+- Configurable `cacheTTL` and `clearCache()` on built-in providers. Metadata and
+  season structures expire after one hour by default; the anime bridge after 24 hours.
+
+### Changed
+
+- `trailerYouTubeID` is the **original-version** trailer: the details request now asks
+  for the lookup language, English and untagged videos (`include_video_language`), and
+  a title made in a third language fetches its own-language videos in one extra
+  request. Before, a French lookup saw only French videos and a language with none got
+  no trailer at all.
+- `cast` lists each person once, their roles joined (`Twin A / Twin B`), so
+  `CastMember.id` is unique.
+- A TMDB id with no kind, no IMDb id and no name throws `SlateError.invalidLookup`
+  instead of returning `nil`.
+- TMDB searches with a year and no kind run `/search/movie` and `/search/tv`, filtered
+  on the server, instead of paging `/search/multi` and filtering on the client — two
+  requests instead of up to 500.
+- AniList asks for 25 results per page and stops after 3 pages when unfiltered, 20 when
+  filtered by year or kind (was 5 per page, up to 100 pages).
+- `Candidate.id` falls back to the IMDb id when there is no TMDB id.
+- Updated README usage examples, DocC/API documentation, and the review checklist
+  for cache lifetimes, cancellation, matching, validation, and Xcode workflows.
+
 ### Fixed
 
+- `seasons(for:)` no longer reads a film's TMDB id as a show's — TMDB numbers the two
+  separately, so it fetched an unrelated show's seasons and cached them.
+- A season structure that fell back to TMDB's own seasons because a request failed is
+  no longer cached: one 429 kept Bleach at one season of 366 for the cache's lifetime.
+- Two specials groups in an episode group become one season 0 numbered straight
+  through; both used to be season 0, and the second's episodes mapped onto the first's.
+- A title with no votes has no TMDB score, instead of 0.0 — also for episodes.
+- AniList partial start dates (`{year: 2027}`) are no date rather than January 1st,
+  which outranked TMDB's real date.
+- Answers are checked for conflicts against the ids the caller passed, not ids other
+  providers supplied mid-lookup; disagreements between those are settled by priority.
+- A loose name match loses a film-or-show conflict with a precise one, whatever the
+  priority: "Love" matched *Love Live!* on AniList and discarded TMDB's film.
+- Images with neither a language nor a rating rank after every described image, so
+  AniList's banner strip no longer wins the backdrop over TMDB's.
+- Timeouts and dropped connections are retried like 429 and 5xx.
+- The response cache has a byte budget (32 MB) as well as an entry count, and a
+  lifetime of zero stores nothing.
+- A failed refresh of the anime id bridge keeps the previous index instead of failing
+  every lookup.
+- `candidates(for:)`'s documentation was attached to `lastPage`.
+- Concurrent identical requests share a fetch with independent waiter cancellation.
+  Invalidation cancels pending work and prevents stale responses or season structures
+  from repopulating caches after settings changes. Credentials distinguish cache entries.
+- Filtered searches continue onto subsequent result pages. AniList request JSON uses
+  stable key ordering, and GraphQL errors are reported rather than cached as no match.
+- Aggregation excludes conflicting IDs or media kinds and reports rejected providers
+  in `failures`. Cancellation stops enrichment rounds and bridge waits.
+- Invalid IDs, dates, negative episode counts, blank metadata, and invalid scalar scores
+  are rejected or omitted at the relevant lookup and payload boundaries.
+- TMDB mixed searches honor the requested release year; AniList searches honor
+  year and kind, while exact AniList IDs take precedence over search hints.
+- Empty translation entries no longer prevent the English synopsis fallback.
+- Equal-priority providers use a stable identifier order for metadata and artwork.
+- Name-only lookups skip downloading the anime ID bridge until a broadcast ID is known.
+- Episode-group corrections must actually cover every native episode, rather than
+  relying only on the summary count, which can include duplicates or be stale.
+- Requests already queued for a rate-limit turn now honor pauses received while
+  waiting. Cancellation stops pacing and retry waits, including cached lookups.
+- Non-finite `Retry-After` values are ignored instead of becoming invalid sleep durations.
 - The search term no longer reaches the log, or `TitleMetadata.failures`, by
   way of a `URLError`. `String(describing:)` of one embeds
   `NSErrorFailingURLKey` — the whole request URL, query string included — so

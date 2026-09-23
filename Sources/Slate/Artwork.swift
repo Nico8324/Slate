@@ -91,7 +91,17 @@ public struct ArtworkSet: Sendable, Equatable {
     }
 
     /// Lower sorts first.
+    ///
+    /// An image with neither a language nor a rating — AniList's, which carries
+    /// no metadata at all — ranks after every image a provider described. Read
+    /// as "textless" it used to win the backdrop tier outright, and a 1900×400
+    /// banner strip was chosen over TMDB's backdrops.
     private func tier(_ artwork: Artwork, kind: ArtworkKind, languages requested: [String]) -> Int {
+        let undescribed = artwork.language == nil && artwork.rating == nil
+        return rank(artwork, kind: kind, languages: requested) + (undescribed ? 1_000 : 0)
+    }
+
+    private func rank(_ artwork: Artwork, kind: ArtworkKind, languages requested: [String]) -> Int {
         // By language, not by locale: images are tagged `en`, and a caller passing the provider's
         // own `en-US` ranked every poster in its language below the textless ones.
         let languages = requested.map { $0.split(separator: "-").first.map(String.init) ?? $0 }
@@ -120,6 +130,8 @@ public struct ArtworkSet: Sendable, Equatable {
 /// call: it is another request, and a caller asking *what is this* should not
 /// pay for forty image records it did not ask for.
 public protocol ArtworkProvider: MetadataProvider {
+    /// - Parameter ids: Identifiers for the title whose artwork is requested.
+    /// - Parameter kind: Whether the title is a movie or a series.
     /// - Parameter nativeSeason: the **provider's own** season number, not one
     ///   from a corrected ``SeasonStructure``. Translate first with
     ///   ``SeasonStructure/nativeSeason(ofSeason:)``: Bleach's arc season 2 lives

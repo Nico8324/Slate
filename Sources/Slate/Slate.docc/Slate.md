@@ -53,7 +53,8 @@ bug for weeks. Provenance has to be per field, and it is far cheaper to design i
 than to retrofit.
 
 The values that lost stay reachable through ``Field/candidates``, which lists
-every answer with the winner first — but nothing has to look at them.
+every accepted answer with the winner first. Conflicting matches are excluded
+and reported in ``TitleMetadata/failures``.
 
 ### Seasons and episodes
 
@@ -76,6 +77,12 @@ distinguishes a correction from the ordinary case, and
 ``SeasonStructure/absoluteNumbering`` distinguishes a correspondence the provider
 *stated* from one that was walked. Past the end of a run is left unmapped rather
 than clamped.
+
+Correction requires a numbered season of at least 60 episodes, or a sole
+numbered season of at least 50. Slate prefers `TVDB Order`, original-air-date
+order, then production or television order. The selected group's actual episode
+mappings must cover every native numbered episode and divide the longest season.
+An incomplete or unavailable group leaves the native structure intact.
 
 ### Artwork
 
@@ -127,9 +134,87 @@ credential will not fix itself. ``SlateError/rateLimited(retryAfter:)`` is
 separate from ``SlateError/http(status:body:)`` so "slow down" can be told from
 "this will never work".
 
-``TMDBProvider/init(accessToken:language:session:)`` selects the metadata
+``TMDBProvider``'s initializer selects the metadata
 language. Artwork is deliberately unaffected: every language is fetched and
 ``ArtworkSet/best(_:preferring:)`` chooses.
+
+### Cache lifetime and refresh
+
+Built-in metadata providers default to a one-hour cache lifetime. The anime ID
+bridge defaults to 24 hours. `cacheTTL` is in seconds, bounded to 0…365 days;
+zero disables retention and non-finite values use the provider default. Expired
+data is fetched on the next lookup. Nothing is persisted to disk.
+
+```swift
+let tmdb = TMDBProvider(accessToken: token, cacheTTL: 900)
+let slate = MetadataAggregator(providers: [AniListProvider(), tmdb])
+await tmdb.clearCache()
+let result = await slate.metadata(for: Lookup(imdbID: "tt2560140"))
+```
+
+``TMDBProvider/clearCache()`` discards responses and derived season structures.
+``AniListProvider/clearCache()`` and ``MDBListProvider/clearCache()`` discard
+responses; ``AnimeIDBridge/clearCache()`` discards its index. These methods also
+cancel pending requests for that provider. Clearing one provider does not clear
+others in an aggregator. Changing TMDB's language or region clears its caches.
+
+Concurrent identical requests share one fetch. Cancelling one waiter leaves the
+others running; cancelling the last waiter cancels the fetch. Invalidated work
+cannot restore old cache entries. Request headers distinguish credentials and
+representations without being logged.
+
+### Matching, validation, and failures
+
+```swift
+let result = await slate.metadata(
+    for: Lookup(search: "Hunter x Hunter", year: 1999, kind: .series)
+)
+```
+
+TMDB uses original-release or series-premiere years; AniList checks the work's
+start year and format. An exact AniList ID overrides name, year, and kind hints.
+Filtered searches continue until a page has a match: at most 500 pages for TMDB
+and 100 for AniList. Ranking stays within the first eligible page.
+
+The aggregator rejects answers contradicting an explicit lookup ID. Among
+provider answers, general priority decides between conflicting shared IDs or
+media kinds. The rejected snapshot contributes no fields or IDs and appears in
+``TitleMetadata/failures``. Providers absent from a priority list sort last by
+identifier. Release-date differences alone do not establish a conflict between
+a cour and a whole series.
+
+Direct provider calls throw credential, HTTP, rate-limit, lookup-validation,
+GraphQL, decoding, or transport errors. ``SlateError/graphQL(_:)`` includes an
+AniList error returned with HTTP 200; that response is not cached as a no-match.
+A valid empty result still means no match. The aggregator records failures as
+descriptions and allows other providers to answer. HTTP body details in these
+descriptions are not suitable for public logging.
+
+``Identifiers`` omits malformed IMDb IDs and nonpositive numeric IDs at
+construction. Lookup validation also checks mutated identifiers, years in
+1…9999, and nonnegative seasons. Built-in snapshot construction omits blank
+strings, nonpositive runtime and episode counts, and scalar ratings outside
+0…10. Release dates must be valid calendar dates rather than rolled-over dates.
+
+### Cancellation
+
+Direct provider calls propagate cancellation. Aggregator methods are
+nonthrowing: they stop new enrichment rounds and may return partial results
+with failure descriptions. Cancellation is not a signal that a title is absent.
+
+```swift
+let task = Task { await slate.metadata(for: Lookup(search: "Dune")) }
+task.cancel()
+```
+
+### Building and testing
+
+The repository includes `Slate.xcodeproj` with a shared **Slate** scheme, a
+framework target, and **SlateTests**. Run `swift test` for the package or
+`xcodebuild test -project Slate.xcodeproj -scheme Slate -destination 'platform=macOS'`
+for the project. Build documentation with Xcode's **Build Documentation** action.
+`project.yml` is the XcodeGen specification; run `xcodegen generate` after adding
+or removing source files. XcodeGen is not a runtime dependency.
 
 ### One request, eight answers
 
@@ -166,8 +251,8 @@ reports ``Snapshot/isAnime`` as `nil` rather than false, because TMDB has no
 anime type and its `anime` keyword is volunteer-applied. AniList answering at
 all is the signal.
 
-A provider that fails is not an error either. It lands in
-``TitleMetadata/failures`` and the others still answer.
+A failed provider is recorded in ``TitleMetadata/failures`` by the aggregator;
+other providers still answer. Direct provider calls throw.
 
 ## Topics
 

@@ -1,0 +1,38 @@
+name: Slate
+options:
+  bundleIdPrefix: dev.slate
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    TVOS_DEPLOYMENT_TARGET: "26.0"
+    XROS_DEPLOYMENT_TARGET: "26.0"
+    SUPPORTED_PLATFORMS: "macosx iphoneos iphonesimulator appletvos appletvsimulator xros xrsimulator"
+    GENERATE_INFOPLIST_FILE: YES
+    CODE_SIGNING_ALLOWED: NO
+targets:
+  Slate:
+    type: framework
+    platform: macOS
+    sources: [Sources/Slate]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.slate.Slate
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+  SlateTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/SlateTests]
+    dependencies:
+      - target: Slate
+schemes:
+  Slate:
+    build:
+      targets:
+        Slate: all
+        SlateTests: [test]
+    test:
+      targets: [SlateTests]
