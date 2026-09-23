@@ -45,10 +45,14 @@ public struct Person: Sendable, Equatable, Identifiable {
     public let profileURL: URL?
     /// `Acting`, `Directing`, `Writing` — what they are chiefly known for.
     public let department: String?
+    /// TMDB's popularity score, from a search: namesakes share a name, not a score, so
+    /// this is what tells the actor people mean from someone else called the same.
+    public let popularity: Double?
 
     public init(
         id: Int, name: String, biography: String? = nil, birthday: Date? = nil,
-        deathday: Date? = nil, profileURL: URL? = nil, department: String? = nil
+        deathday: Date? = nil, profileURL: URL? = nil, department: String? = nil,
+        popularity: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -57,6 +61,7 @@ public struct Person: Sendable, Equatable, Identifiable {
         self.deathday = deathday
         self.profileURL = profileURL
         self.department = department
+        self.popularity = popularity
     }
 }
 

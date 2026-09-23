@@ -82,6 +82,20 @@ extension TMDBRequestTests {
         #expect(person.profileURL?.absoluteString.hasSuffix("/p.jpg") == true)
     }
 
+    @Test func aPersonSearchCarriesPopularitySoNamesakesCanBeToldApart() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/person", json: """
+        {"results":[
+          {"id":115440,"name":"Sydney Sweeney","profile_path":"/a.jpg","known_for_department":"Acting","popularity":88.4},
+          {"id":2,"name":"Sydney Sweeney","profile_path":"/b.jpg","known_for_department":"Acting","popularity":1.9}]}
+        """)
+
+        let people = try await provider().searchPeople("Sydney Sweeney")
+
+        #expect(people.map(\.id) == [115440, 2])
+        #expect(people.map(\.popularity) == [88.4, 1.9])
+    }
+
     @Test func changingLanguageKeepsTheAllowanceAndDropsTheCache() async throws {
         StubURLProtocol.reset()
         StubURLProtocol.stub("/search/tv", json: #"{"results":[{"id":1,"name":"X","popularity":1}]}"#)

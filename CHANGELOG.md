@@ -6,6 +6,11 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- `Person.popularity`, from `TMDBProvider.searchPeople(_:)`: TMDB lists everyone who shares
+  a name, and the score is what tells the person meant from their namesakes.
+
 ## [0.17.0] — 2026-09-23
 
 ### Added

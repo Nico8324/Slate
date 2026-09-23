@@ -104,7 +104,7 @@ extension TMDBProvider {
             .compactMap { hit in
                 hit.name?.nilIfEmpty.map {
                     Person(id: hit.id, name: $0, profileURL: Self.imageURL(hit.profile_path),
-                           department: hit.known_for_department?.nilIfEmpty)
+                           department: hit.known_for_department?.nilIfEmpty, popularity: hit.popularity)
                 }
             }
     }
@@ -174,6 +174,7 @@ extension TMDBProvider {
             var name: String?
             var profile_path: String?
             var known_for_department: String?
+            var popularity: Double?
         }
         var results: [Hit] = []
     }
