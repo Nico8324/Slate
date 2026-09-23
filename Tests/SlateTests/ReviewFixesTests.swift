@@ -241,8 +241,10 @@ struct ReviewFixes {
     @Test func officialListsReadTheAskedKindInRankOrder() async throws {
         StubURLProtocol.reset()
         StubURLProtocol.respond { request in
-            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer key")
-            #expect(request.url?.query?.contains("key") != true, "the key never travels in the URL")
+            // MDBList takes an API key only as `?apikey=`; `Bearer` is for OAuth
+            // tokens and answered a real key with 401.
+            #expect(request.url?.query?.contains("apikey=key") == true)
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
             #expect(request.url?.path == "/lists/official/moviemeter/items")
             #expect(request.url?.query?.contains("mediatype=movie") == true)
             return .init(body: """

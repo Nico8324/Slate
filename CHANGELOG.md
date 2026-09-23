@@ -12,6 +12,13 @@ All notable changes to Slate. Format follows
   page of an official list — trending, popular, most watched, anticipated, IMDb's
   MOVIEmeter, streaming charts — ranked, with ids and posters. `OfficialList`, `ListPage`.
 
+### Fixed
+
+- MDBList never worked with a real API key: Slate sent it as `Authorization: Bearer`,
+  which MDBList reserves for OAuth tokens and answers with 401. It now travels as
+  `?apikey=`, the only form MDBList accepts for a key. Query strings never reach
+  Slate's logs.
+
 ### Removed
 
 - `TraktProvider`, `TraktList`, `TraktPeriod` and `Provider.trakt`. New Trakt API apps

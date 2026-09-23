@@ -467,7 +467,7 @@ let tmdb = TMDBProvider(accessToken: keychain.tmdbToken)  // sourced by you
 await tmdb.updateAPIKey(rotatedToken)                     // rotated in place
 ```
 
-Keys travel as `Authorization: Bearer`, **never** in a query string.
+Keys travel as `Authorization: Bearer`, never in a query string — except MDBList's, which it accepts only as `?apikey=` (its `Bearer` is for OAuth tokens). Slate's logs strip query strings, so that key reaches no log line either.
 
 ### 🌍 Region
 

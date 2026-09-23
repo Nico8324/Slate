@@ -20,8 +20,12 @@ public actor MDBListProvider: MetadataProvider {
     private var apiKey: String
     private let http: HTTP
 
-    /// - Parameter apiKey: sourced by the caller and sent as a bearer token.
-    ///   MDBList also accepts `?apikey=`; this deliberately does not use it.
+    /// - Parameter apiKey: sourced by the caller and sent as `?apikey=`.
+    ///   That is the only form MDBList accepts for an API key — its
+    ///   `Authorization: Bearer` is for OAuth tokens, and answers an API key
+    ///   with 401, which is why this provider never worked with a real key
+    ///   until 0.15.0. Slate's logs strip query strings, and errors from
+    ///   outside Slate are reduced to their kind, so the key reaches neither.
     /// - Parameter session: Session used for requests; injectable for tests.
     /// - Parameter cacheTTL: Cache lifetime in seconds; defaults to one hour.
     ///   Zero disables retention. Finite values are clamped to 0…365 days;
@@ -53,8 +57,8 @@ public actor MDBListProvider: MetadataProvider {
 
         let payload = try await http.json(
             Media.self,
-            url: try URL.build(Self.api, path: route),
-            headers: ["Authorization": "Bearer \(apiKey)", "Accept": "application/json"]
+            url: try URL.build(Self.api, path: route, query: ["apikey": apiKey]),
+            headers: ["Accept": "application/json"]
         )
         let ratings = payload.ratings?.compactMap(\.rating) ?? []
         guard !ratings.isEmpty || payload.imdb_id != nil else {
@@ -101,11 +105,9 @@ public actor MDBListProvider: MetadataProvider {
             "limit": String(min(max(limit, 1), 1000)),
             "append_to_response": "poster",
             "cursor": cursor,
+            "apikey": apiKey,
         ])
-        let payload = try await http.json(
-            ListItems.self, url: url,
-            headers: ["Authorization": "Bearer \(apiKey)", "Accept": "application/json"]
-        )
+        let payload = try await http.json(ListItems.self, url: url, headers: ["Accept": "application/json"])
         let rows = kind == .movie ? payload.movies : payload.shows
         let titles = (rows ?? []).sorted { ($0.rank ?? .max) < ($1.rank ?? .max) }
             .compactMap { $0.candidate(kind: kind) }

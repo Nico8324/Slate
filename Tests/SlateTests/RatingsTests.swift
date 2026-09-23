@@ -128,14 +128,17 @@ extension TMDBRequestTests {
         #expect(StubURLProtocol.requested.count == 1, "the id was known from the start")
     }
 
-    @Test func theKeyRidesAsABearerHeaderAndNeverInTheURL() async throws {
+    @Test func theKeyRidesAsTheOnlyFormMDBListAcceptsAndStaysOutOfLogs() async throws {
         StubURLProtocol.reset()
         StubURLProtocol.stub("/imdb/movie/tt6", json: #"{"imdb_id":"tt6"}"#)
         _ = try? await mdbList().snapshot(for: Lookup(imdbID: "tt6", kind: .movie))
 
-        // MDBList also accepts ?apikey=; Slate deliberately does not use it.
-        #expect(!StubURLProtocol.requested.contains { $0.absoluteString.contains("apikey") })
-        #expect(!StubURLProtocol.requested.contains { $0.absoluteString.contains("test-key") })
+        // MDBList takes an API key only as `?apikey=`. Its `Authorization: Bearer`
+        // is for OAuth tokens, and a real key sent that way was answered with 401:
+        // this test used to require the opposite, and passed while nothing worked.
+        let url = try #require(StubURLProtocol.requested.first)
+        #expect(url.query?.contains("apikey=test-key") == true)
+        #expect(!Log.redactingQuery(url).contains("test-key"), "what the log prints has no query string")
     }
 }
 }
