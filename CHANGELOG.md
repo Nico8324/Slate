@@ -6,6 +6,8 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-09-23
+
 ### Added
 
 - **Charts through MDBList.** `MDBListProvider.titles(in:kind:limit:cursor:)` returns a
@@ -1113,6 +1115,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.15.0]: https://github.com/Nico8324/Slate/releases/tag/v0.15.0
 [0.14.0]: https://github.com/Nico8324/Slate/releases/tag/v0.14.0
 [0.13.0]: https://github.com/Nico8324/Slate/releases/tag/v0.13.0
 [0.12.1]: https://github.com/Nico8324/Slate/releases/tag/v0.12.1
