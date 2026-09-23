@@ -387,18 +387,23 @@ public actor TMDBProvider: MetadataProvider {
     /// The widths TMDB's image server renders.
     static let imageWidths = [92, 154, 185, 300, 342, 500, 780, 1280]
 
-    /// The same TMDB image at a width that fits `points × scale` pixels.
+    /// The same TMDB image at a width that fits `pixels`.
     ///
     /// Every URL Slate returns is the `original` — a 2000×3000 poster, several
     /// megabytes — because only the caller knows how big it will be drawn. A
-    /// grid of forty posters wants `w342`, not forty originals. Returns the URL
-    /// unchanged when it is not a TMDB image or when nothing smaller fits.
+    /// grid of forty posters wants `w342`, not forty originals.
+    ///
+    /// Any size in the URL is replaced, not only `original`: MDBList hands out
+    /// `w200` posters, and drawn across a large card they stayed 200 pixels wide.
+    /// Past the largest rendered width the `original` is returned. URLs that are
+    /// not TMDB images come back unchanged.
     public static func resized(_ url: URL, toFit pixels: Int) -> URL {
-        let marker = "/t/p/original/"
         let string = url.absoluteString
-        guard string.hasPrefix(images), string.contains(marker),
-              let width = imageWidths.first(where: { $0 >= pixels }) else { return url }
-        return URL(string: string.replacingOccurrences(of: marker, with: "/t/p/w\(width)/")) ?? url
+        guard string.hasPrefix(images),
+              let range = string.range(of: #"/t/p/(original|w\d+|h\d+)/"#, options: .regularExpression)
+        else { return url }
+        let size = imageWidths.first(where: { $0 >= pixels }).map { "w\($0)" } ?? "original"
+        return URL(string: string.replacingCharacters(in: range, with: "/t/p/\(size)/")) ?? url
     }
 
     /// `path` is third-party JSON. Percent-encoded rather than interpolated raw:

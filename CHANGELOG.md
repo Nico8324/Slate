@@ -6,6 +6,12 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `TMDBProvider.resized(_:toFit:)` replaces any size in a TMDB image URL, not only
+  `original`: MDBList's `w200` posters stayed 200 pixels wide however large they were
+  drawn. Past the largest rendered width it returns `original`.
+
 ## [0.15.0] — 2026-09-23
 
 ### Added

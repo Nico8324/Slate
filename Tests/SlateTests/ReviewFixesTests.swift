@@ -112,6 +112,10 @@ struct ReviewFixes {
         let original = try #require(TMDBProvider.imageURL("/p.jpg"))
         #expect(TMDBProvider.resized(original, toFit: 300).absoluteString.hasSuffix("/t/p/w300/p.jpg"))
         #expect(TMDBProvider.resized(original, toFit: 5000) == original, "nothing smaller fits")
+        let small = try #require(URL(string: "https://image.tmdb.org/t/p/w200/p.jpg"))
+        #expect(TMDBProvider.resized(small, toFit: 700).absoluteString.hasSuffix("/t/p/w780/p.jpg"),
+                "an MDBList w200 poster is upgraded, not left blurry")
+        #expect(TMDBProvider.resized(small, toFit: 5000).absoluteString.hasSuffix("/t/p/original/p.jpg"))
         let elsewhere = try #require(URL(string: "https://example.com/original/p.jpg"))
         #expect(TMDBProvider.resized(elsewhere, toFit: 300) == elsewhere)
     }
