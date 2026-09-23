@@ -15,7 +15,7 @@ public struct Candidate: Sendable, Equatable, Identifiable {
 
     /// With the kind: TMDB numbers films and shows separately, and a film and
     /// a show sharing a number in one search result had the same id.
-    /// And the IMDb id where there is no TMDB one: Trakt rows can carry only that,
+    /// And the IMDb id where there is no TMDB one: list rows can carry only that,
     /// and every such row shared the id `…-0`.
     public var id: String {
         let key = ids.tmdb.map(String.init) ?? ids.imdb ?? ids.aniList.map(String.init) ?? "0"

@@ -6,6 +6,17 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Charts through MDBList.** `MDBListProvider.titles(in:kind:limit:cursor:)` returns a
+  page of an official list — trending, popular, most watched, anticipated, IMDb's
+  MOVIEmeter, streaming charts — ranked, with ids and posters. `OfficialList`, `ListPage`.
+
+### Removed
+
+- `TraktProvider`, `TraktList`, `TraktPeriod` and `Provider.trakt`. New Trakt API apps
+  need a paid account; MDBList serves the same rankings on the key its ratings use.
+
 ## [0.14.0] — 2026-09-23
 
 ### Added

@@ -114,9 +114,9 @@ which is the argument making itself.
 | :--- | :--- | :--- |
 | **TMDB** | v4 read token | The IMDb id · western movies & TV · seasons · art · cast · trailer |
 | **AniList** | **none** | Anime detection · romaji & native names · episode counts · voice actors · studio · tags · **relations** |
-| **MDBList** | api key, optional | IMDb · Metacritic · both tomatometers · Letterboxd · Trakt · MyAnimeList |
+| **MDBList** | api key, optional | IMDb · Metacritic · both tomatometers · Letterboxd · Trakt · MyAnimeList · **charts**: trending, popular, IMDb MOVIEmeter |
 | **Fribb bridge** | **none** | IMDb or TMDB ids → AniList · MyAnimeList ids |
-| **Trakt** | client id, optional | Lists only: trending · popular · anticipated · box office · most watched |
+
 
 **Three deliberate silences.** TMDB reports `isAnime` as `nil`, never `false` — it
 has no anime type and its `anime` keyword is volunteer-applied, so AniList
@@ -399,16 +399,21 @@ TMDBProvider.resized(posterURL, toFit: 342 * 2)   // w780, for a 342-point card 
 
 TMDB's own lists rank by its popularity score — page views, votes, searches on TMDB —
 which surfaces titles nobody has heard of and orders the rest oddly next to IMDb's or
-Trakt's charts. Trakt counts people watching:
+Trakt's charts. MDBList republishes the charts people recognise, for the key its
+ratings already need:
 
 ```swift
-let trakt = TraktProvider(clientID: keychain.traktClientID)   // injected, never stored
-let trending = try await trakt.titles(in: .trendingMovies)    // [Candidate], Trakt's order
-let details = await slate.metadata(for: Lookup(ids: trending[0].ids, kind: .movie))
+let mdbList = MDBListProvider(apiKey: keychain.mdbListKey)      // injected, never stored
+let page = try await mdbList.titles(in: .trending, kind: .movie) // [Candidate], ranked
+let next = try await mdbList.titles(in: .trending, kind: .movie, cursor: page.nextCursor)
 ```
 
-Lists only: rows carry IMDb and TMDB ids, a title and a year, and no poster — Trakt
-holds none. Scrobbling stays out, for the reason below.
+`trending`, `popular`, `mostWatched`, `mostWatchedThisWeek`, `anticipated`,
+`imdbMovieMeter` and `streamingCharts`, each for films or shows. Rows carry ids, a
+title, a year and a poster; fetch the rest through the aggregator.
+
+Trakt's own API is not used: new Trakt apps need a paid account, and MDBList serves the
+same rankings.
 
 ## ⭐ Ratings, cross-referenced
 
@@ -544,7 +549,7 @@ keys a person has to go and get. That number is **two, one of them optional.**
 | **Fanart.tv** | Wanted for logos. TMDB serves logos in every language on the same key. |
 | **Watchmode** | Wanted for availability. TMDB's watch providers cover it, region by region, on the same key. |
 | **OMDb · Trakt ratings** | Redundant since 0.6.0: MDBList returns what both were wanted for, in one call. |
-| **Trakt scrobbling** | Not metadata. It is a record of what a person watched, which belongs to the app that watched it. Trakt's *lists* are in: they rank titles, which is a question Slate answers. |
+| **Trakt scrobbling** | Not metadata. It is a record of what a person watched, which belongs to the app that watched it. Trakt's rankings arrive through MDBList's charts instead. |
 | **manami** | Bridges to neither IMDb nor TMDB — the one direction an anime library needs. Tens of megabytes for ids nothing can reach. |
 | **AnimeSchedule · TVmaze** | Wanted for air dates. TMDB's next/last episode and AniList's next airing episode already answer it. |
 

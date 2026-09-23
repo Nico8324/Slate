@@ -36,7 +36,6 @@ enum Log {
     static let aniList = Logger(subsystem: "Slate", category: "AniList")
     static let mdbList = Logger(subsystem: "Slate", category: "MDBList")
     static let bridge = Logger(subsystem: "Slate", category: "AnimeIDBridge")
-    static let trakt = Logger(subsystem: "Slate", category: "Trakt")
     static let seasons = Logger(subsystem: "Slate", category: "Seasons")
     static let artwork = Logger(subsystem: "Slate", category: "Artwork")
 

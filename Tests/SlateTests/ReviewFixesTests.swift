@@ -236,42 +236,37 @@ struct ReviewFixes {
         #expect(!HTTP.isTransient(URLError(.badServerResponse)))
     }
 
-    // MARK: - Trakt
+    // MARK: - Lists
 
-    @Test func traktListsReadWrappedAndBareRows() async throws {
+    @Test func officialListsReadTheAskedKindInRankOrder() async throws {
         StubURLProtocol.reset()
         StubURLProtocol.respond { request in
-            #expect(request.value(forHTTPHeaderField: "trakt-api-key") == "client")
-            #expect(request.value(forHTTPHeaderField: "trakt-api-version") == "2")
-            #expect(request.url?.query?.contains("client") != true, "the key never travels in the URL")
-            return switch request.url?.path {
-            case "/movies/trending":
-                .init(body: """
-                [{"watchers":40,"movie":{"title":"The Housemaid","year":2025,"ids":{"imdb":"tt27543632","tmdb":1368166}}},
-                 {"watchers":2,"movie":{"title":"No ids","year":2025,"ids":{}}}]
-                """)
-            case "/shows/popular":
-                .init(body: #"[{"title":"Tulsa King","year":2022,"ids":{"tmdb":153312}}]"#)
-            default:
-                .init(status: 404, body: "[]")
-            }
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer key")
+            #expect(request.url?.query?.contains("key") != true, "the key never travels in the URL")
+            #expect(request.url?.path == "/lists/official/moviemeter/items")
+            #expect(request.url?.query?.contains("mediatype=movie") == true)
+            return .init(body: """
+            {"movies":[
+              {"rank":2,"title":"Tenet","release_year":2020,"imdb_id":"tt6723592","ids":{"imdb":"tt6723592","tmdb":577922}},
+              {"rank":1,"title":"The Housemaid","release_year":2025,"imdb_id":"tt27543632","ids":{"tmdb":1368166},"poster":"https://image.tmdb.org/t/p/w500/p.jpg"},
+              {"rank":3,"title":"No ids","release_year":2025}],
+             "shows":[{"rank":1,"title":"Tulsa King","imdb_id":"tt16358384"}],
+             "pagination":{"next_cursor":"abc"}}
+            """)
         }
-        let trakt = TraktProvider(clientID: "client", session: StubURLProtocol.session)
+        let mdbList = MDBListProvider(apiKey: "key", session: StubURLProtocol.session)
+        let page = try await mdbList.titles(in: .imdbMovieMeter, kind: .movie)
 
-        let movies = try await trakt.titles(in: .trendingMovies)
-        #expect(movies.map(\.title) == ["The Housemaid"], "a row nothing can look up is dropped")
-        #expect(movies.first?.ids.tmdb == 1368166)
-        #expect(movies.first?.kind == .movie)
-        #expect(movies.first?.provider == .trakt)
-
-        let shows = try await trakt.titles(in: .popularShows)
-        #expect(shows.first?.kind == .series)
-        #expect(shows.first?.ids.tmdb == 153312)
+        #expect(page.titles.map(\.title) == ["The Housemaid", "Tenet"], "rank order; a row nothing can look up is dropped")
+        #expect(page.titles.first?.ids == Identifiers(imdb: "tt27543632", tmdb: 1368166))
+        #expect(page.titles.first?.posterURL != nil)
+        #expect(page.titles.first?.provider == .mdbList)
+        #expect(page.nextCursor == "abc")
     }
 
-    @Test func traktWithoutAClientIDSaysSo() async {
-        await #expect(throws: SlateError.missingCredential(.trakt)) {
-            try await TraktProvider(clientID: "", session: StubURLProtocol.session).titles(in: .boxOffice)
+    @Test func officialListsWithoutAKeySaySo() async {
+        await #expect(throws: SlateError.missingCredential(.mdbList)) {
+            try await MDBListProvider(apiKey: "", session: StubURLProtocol.session).titles(in: .trending, kind: .series)
         }
     }
 }

@@ -74,6 +74,45 @@ public actor MDBListProvider: MetadataProvider {
         )
     }
 
+    /// One page of an official list, in MDBList's order.
+    ///
+    /// TMDB's own lists rank by its popularity score — page views, votes and
+    /// searches on TMDB itself — which surfaces titles nobody around you has
+    /// heard of and orders the rest oddly next to IMDb's or Trakt's charts.
+    /// MDBList republishes the charts people recognise, for the same free key
+    /// its ratings already need.
+    ///
+    /// Rows carry ids, a title, a year and a poster; fetch the details through
+    /// ``MetadataAggregator`` or ``TMDBProvider``. A row with neither a TMDB nor
+    /// an IMDb id is dropped: nothing could fetch its details.
+    ///
+    /// - Parameters:
+    ///   - list: Which chart.
+    ///   - kind: Films or shows — every official list holds both.
+    ///   - limit: Rows per page, 1…1000.
+    ///   - cursor: ``ListPage/nextCursor`` from the previous page; `nil` for the first.
+    public func titles(
+        in list: OfficialList, kind: Kind, limit: Int = 20, cursor: String? = nil
+    ) async throws -> ListPage {
+        try Task.checkCancellation()
+        guard !apiKey.isEmpty else { throw SlateError.missingCredential(.mdbList) }
+        let url = try URL.build(Self.api, path: "/lists/official/\(list.rawValue)/items", query: [
+            "mediatype": kind == .movie ? "movie" : "show",
+            "limit": String(min(max(limit, 1), 1000)),
+            "append_to_response": "poster",
+            "cursor": cursor,
+        ])
+        let payload = try await http.json(
+            ListItems.self, url: url,
+            headers: ["Authorization": "Bearer \(apiKey)", "Accept": "application/json"]
+        )
+        let rows = kind == .movie ? payload.movies : payload.shows
+        let titles = (rows ?? []).sorted { ($0.rank ?? .max) < ($1.rank ?? .max) }
+            .compactMap { $0.candidate(kind: kind) }
+        Log.mdbList.debug("\(list.rawValue, privacy: .public) — \(titles.count, privacy: .public) \(kind.rawValue, privacy: .public) rows")
+        return ListPage(titles: titles, nextCursor: payload.pagination?.next_cursor?.nilIfEmpty)
+    }
+
     /// MDBList's id routes, in the order they are worth trying.
     static func route(for lookup: Lookup) -> String? {
         let type = switch lookup.kind {
@@ -88,6 +127,36 @@ public actor MDBListProvider: MetadataProvider {
     }
 
     // MARK: - Payload
+
+    struct ListItems: Decodable {
+        var movies: [Item]?
+        var shows: [Item]?
+        var pagination: Pagination?
+
+        struct Pagination: Decodable { var next_cursor: String? }
+
+        struct Item: Decodable {
+            var rank: Int?
+            var title: String?
+            var release_year: Int?
+            var imdb_id: String?
+            var ids: IDs?
+            var poster: String?
+
+            struct IDs: Decodable {
+                var imdb: String?
+                var tmdb: Int?
+            }
+
+            func candidate(kind: Kind) -> Candidate? {
+                guard let title = title?.nilIfEmpty else { return nil }
+                let ids = Identifiers(imdb: ids?.imdb ?? imdb_id, tmdb: ids?.tmdb).validated
+                guard ids.tmdb != nil || ids.imdb != nil else { return nil }
+                return Candidate(ids: ids, kind: kind, title: title, year: release_year,
+                                 posterURL: poster.flatMap(URL.init(string:)), provider: .mdbList)
+            }
+        }
+    }
 
     struct Media: Decodable {
         var imdb_id: String?
