@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.16.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.17.0-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#-platform-support)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift&logoColor=white)](https://swift.org/package-manager)
@@ -45,7 +45,7 @@ looking. A studio's *slate* is also its roster of titles.
 | **CinemaResolvers** | *Where do I get it?* |
 | **Cinema** | *Where do I watch it?* |
 
-This README describes release 0.16.0.
+This README describes release 0.17.0.
 
 ## ⚡ Quick start
 
@@ -562,7 +562,7 @@ wrong.**
 ## 📦 Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.16.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.17.0")
 ```
 
 ```swift

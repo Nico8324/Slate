@@ -6,6 +6,8 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-09-23
+
 ### Added
 
 - `TMDBProvider.collection(id:)`: the films of a franchise, in release order.
@@ -1137,6 +1139,7 @@ reader deserves the reasoning rather than a re-argument.
   `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
   changes.
 
+[0.17.0]: https://github.com/Nico8324/Slate/releases/tag/v0.17.0
 [0.16.0]: https://github.com/Nico8324/Slate/releases/tag/v0.16.0
 [0.15.0]: https://github.com/Nico8324/Slate/releases/tag/v0.15.0
 [0.14.0]: https://github.com/Nico8324/Slate/releases/tag/v0.14.0
