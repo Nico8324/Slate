@@ -6,6 +6,35 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `FieldKey` gains `.nextEpisode` and `.homeReleaseDate`: a `switch` over it with no
+  `default` needs the two cases. `nextEpisode` comes from TMDB alone, while
+  `nextEpisodeAirDate` prefers AniList for anime, so their `best` values can come from
+  different providers.
+- `TMDBProvider.upcoming(_:after:calendar:page:)` counts "today" in the viewer's calendar.
+- A show's seasons are read from its details request, which the cache usually already holds,
+  rather than from a second `/tv/{id}` request.
+- The response cache drops the least recently *used* entry, not the least recently fetched,
+  and TMDB's holds 1,024 responses or 128 MB: a busy hour no longer pushes out the titles
+  being looked at.
+
+### Added
+
+- `TMDBProvider.genres(of:)` and `TMDBProvider.titles(inGenre:kind:page:)`: TMDB's genres
+  for films or shows, and a genre's titles page by page, most popular first among titles
+  with at least 50 votes.
+- `TMDBProvider.upcoming(_:after:page:)`: announced films, or new shows, not out yet, most
+  awaited first, as far ahead as TMDB has dates.
+- `Candidate.releaseDate`, `backdropURL`, `originalLanguage` and `genreIDs`, from TMDB's
+  searches and lists; AniList's charts give their start date too.
+- `Candidate.releasePrecision` and `DatePrecision`: an announcement dated only "October 2027"
+  or "2027" says so, rather than passing for the first of the month.
+- `homeReleaseDate` on snapshots and `TitleMetadata`: a film's first digital release, the
+  region's own when it has one — when it can be watched at home rather than in cinemas.
+- `nextEpisode` on snapshots and `TitleMetadata`: which episode airs next, a new season when
+  it's episode 1.
+
 ## [0.18.0] — 2026-09-23
 
 ### Added

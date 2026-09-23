@@ -85,7 +85,7 @@ public actor TMDBProvider: MetadataProvider {
         // TMDB is generous, but a library scan is thousands of requests and
         // there is no reason to be the loudest client on the server.
         self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 20),
-                         cache: ResponseCache(ttl: cacheTTL), provider: .tmdb)
+                         cache: ResponseCache(limit: 1024, ttl: cacheTTL, byteLimit: 128 * 1024 * 1024), provider: .tmdb)
     }
 
     /// Rotate the token in place. Slate never persists it.
@@ -242,7 +242,9 @@ public actor TMDBProvider: MetadataProvider {
         return nil
     }
 
-    private func details(id: Int, kind: Kind) async throws -> Snapshot {
+    /// The one details request, with everything appended: also what seasons are read from, so
+    /// the cache answers them rather than a second request.
+    func detailsURL(id: Int, kind: Kind) throws -> URL {
         let path = kind == .movie ? "/movie/\(id)" : "/tv/\(id)"
         // One request rather than five. `append_to_response` costs nothing extra
         // and these are exactly the fields a library sets on a record.
@@ -255,10 +257,14 @@ public actor TMDBProvider: MetadataProvider {
         // `language` alone filters `videos` to that one language, so a French
         // lookup never saw the studio's own trailers and a language with no local
         // trailer got none at all. English and untagged ride along for free.
-        let url = try URL.build(Self.api, path: path, query: [
+        return try URL.build(Self.api, path: path, query: [
             "append_to_response": extras, "language": language,
             "include_video_language": Self.videoLanguages(language, "en"),
         ])
+    }
+
+    private func details(id: Int, kind: Kind) async throws -> Snapshot {
+        let url = try detailsURL(id: id, kind: kind)
         let payload = try await http.json(Details.self, url: url, headers: headers)
 
         let title = payload.title ?? payload.name
@@ -307,7 +313,9 @@ public actor TMDBProvider: MetadataProvider {
             franchise: payload.belongs_to_collection?.franchise,
             status: payload.status.flatMap(ReleaseStatus.init(providerValue:)),
             nextEpisodeAirDate: payload.next_episode_to_air?.air_date?.asReleaseDate,
+            nextEpisode: payload.next_episode_to_air?.position,
             lastEpisodeAirDate: payload.last_episode_to_air?.air_date?.asReleaseDate,
+            homeReleaseDate: payload.release_dates?.homeRelease(in: region),
             searchNames: [title, originalTitle].compactMap { $0?.nilIfEmpty }.deduplicatedNames
         )
     }
@@ -503,7 +511,16 @@ public actor TMDBProvider: MetadataProvider {
         }
 
         struct Named: Decodable { let name: String }
-        struct EpisodeStub: Decodable { var air_date: String? }
+        struct EpisodeStub: Decodable {
+            var air_date: String?
+            var season_number: Int?
+            var episode_number: Int?
+
+            var position: EpisodePosition? {
+                guard let season_number, let episode_number else { return nil }
+                return EpisodePosition(season: season_number, episode: episode_number)
+            }
+        }
 
         struct CollectionRef: Decodable {
             let id: Int
@@ -711,11 +728,30 @@ public actor TMDBProvider: MetadataProvider {
 
         struct ReleaseDates: Decodable {
             struct Entry: Decodable {
-                struct Release: Decodable { var certification: String? }
+                struct Release: Decodable {
+                    var certification: String?
+                    /// 1 premiere, 2 limited, 3 cinemas, 4 digital, 5 physical, 6 TV.
+                    var type: Int?
+                    var release_date: String?
+                }
                 let iso_3166_1: String
                 var release_dates: [Release] = []
             }
             var results: [Entry] = []
+
+            /// The first digital release: the region's own when it has one — a film
+            /// reaches each country's stores on its own day — else the earliest anywhere,
+            /// which is when a film is first watchable at home somewhere, and the best
+            /// guess there is where the region's own date isn't listed.
+            func homeRelease(in region: String) -> Date? {
+                func digital(_ entries: [Entry]) -> Date? {
+                    entries.flatMap(\.release_dates)
+                        .filter { $0.type == 4 }
+                        .compactMap { $0.release_date.flatMap { String($0.prefix(10)).asReleaseDate } }
+                        .min()
+                }
+                return digital(results.filter { $0.iso_3166_1 == region }) ?? digital(results)
+            }
         }
 
         struct Videos: Decodable {

@@ -75,7 +75,7 @@ extension AniListProvider {
     query ($page: Int, $perPage: Int, $sort: [MediaSort], $format: [MediaFormat], $season: MediaSeason, $seasonYear: Int, $status: MediaStatus) {
       Page(page: $page, perPage: $perPage) {
         media(type: ANIME, isAdult: false, sort: $sort, format_in: $format, season: $season, seasonYear: $seasonYear, status: $status) {
-          id idMal format title { romaji english } startDate { year } coverImage { extraLarge }
+          id idMal format title { romaji english } startDate { year month day } coverImage { extraLarge }
         }
       }
     }
@@ -103,18 +103,34 @@ extension AniListProvider {
             let id: Int
             var idMal: Int?
             var title: Title?
-            var startDate: Year?
+            var startDate: Start?
             var coverImage: Cover?
 
             struct Title: Decodable { var romaji: String?; var english: String? }
-            struct Year: Decodable { var year: Int? }
+            struct Start: Decodable {
+                var year: Int?
+                var month: Int?
+                var day: Int?
+
+                /// The first day of what's known, midnight UTC, and how much is known.
+                var date: (Date, DatePrecision)? {
+                    guard let year else { return nil }
+                    var calendar = Calendar(identifier: .gregorian)
+                    calendar.timeZone = TimeZone(identifier: "UTC")!
+                    let precision: DatePrecision = month == nil ? .year : day == nil ? .month : .day
+                    let components = DateComponents(year: year, month: month ?? 1, day: month == nil ? 1 : day ?? 1)
+                    return calendar.date(from: components).map { ($0, precision) }
+                }
+            }
             struct Cover: Decodable { var extraLarge: String? }
 
             func candidate(kind: Kind) -> Candidate? {
                 guard id > 0, let name = (title?.english?.nilIfEmpty ?? title?.romaji?.nilIfEmpty) else { return nil }
+                let start = startDate?.date
                 return Candidate(
                     ids: Identifiers(aniList: id, myAnimeList: idMal).validated, kind: kind, title: name,
-                    year: startDate?.year, posterURL: coverImage?.extraLarge.flatMap(URL.init(string:)),
+                    year: startDate?.year, releaseDate: start?.0, releasePrecision: start?.1,
+                    posterURL: coverImage?.extraLarge.flatMap(URL.init(string:)),
                     provider: .aniList
                 )
             }

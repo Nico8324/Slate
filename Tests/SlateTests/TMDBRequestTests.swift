@@ -184,6 +184,48 @@ extension TMDBRequestTests {
         #expect(snapshot.contentRating == "R", "the blank entry is skipped")
     }
 
+    /// In cinemas is not at home: a film is watchable from its digital release,
+    /// the region's own when it has one.
+    @Test func aFilmsHomeReleaseIsItsFirstDigitalOne() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":603,"title":"X","popularity":9.0}]}"#)
+        StubURLProtocol.stub("/movie/603", json: """
+        {"id":603,"title":"X","release_dates":{"results":[
+          {"iso_3166_1":"US","release_dates":[{"type":3,"release_date":"2027-03-12T00:00:00.000Z"},
+                                              {"type":4,"release_date":"2027-04-20T00:00:00.000Z"}]},
+          {"iso_3166_1":"FR","release_dates":[{"type":4,"release_date":"2027-05-02T00:00:00.000Z"}]}]}}
+        """)
+
+        let american = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .movie)))
+        #expect(american.homeReleaseDate == (try Date("2027-04-20T00:00:00Z", strategy: .iso8601)))
+
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":603,"title":"X","popularity":9.0}]}"#)
+        StubURLProtocol.stub("/movie/603", json: """
+        {"id":603,"title":"X","release_dates":{"results":[
+          {"iso_3166_1":"US","release_dates":[{"type":4,"release_date":"2027-04-20T00:00:00.000Z"}]},
+          {"iso_3166_1":"FR","release_dates":[{"type":4,"release_date":"2027-05-02T00:00:00.000Z"}]}]}}
+        """)
+        let french = TMDBProvider(accessToken: "t", region: "FR", session: StubURLProtocol.session)
+        let snapshot = try #require(await french.snapshot(for: Lookup(search: "X", kind: .movie)))
+        #expect(snapshot.homeReleaseDate == (try Date("2027-05-02T00:00:00Z", strategy: .iso8601)))
+    }
+
+    /// No date of the region's own: the earliest anywhere, when it's first watchable at home somewhere.
+    @Test func withoutTheRegionsOwnTheHomeReleaseIsTheEarliestAnywhere() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":603,"title":"X","popularity":9.0}]}"#)
+        StubURLProtocol.stub("/movie/603", json: """
+        {"id":603,"title":"X","release_dates":{"results":[
+          {"iso_3166_1":"GB","release_dates":[{"type":4,"release_date":"2027-04-28T00:00:00.000Z"}]},
+          {"iso_3166_1":"US","release_dates":[{"type":4,"release_date":"2027-04-20T00:00:00.000Z"}]},
+          {"iso_3166_1":"FR","release_dates":[{"type":3,"release_date":"2027-03-12T00:00:00.000Z"}]}]}}
+        """)
+        let french = TMDBProvider(accessToken: "t", region: "FR", session: StubURLProtocol.session)
+        let snapshot = try #require(await french.snapshot(for: Lookup(search: "X", kind: .movie)))
+        #expect(snapshot.homeReleaseDate == (try Date("2027-04-20T00:00:00Z", strategy: .iso8601)))
+    }
+
 
 }
 
@@ -249,13 +291,37 @@ extension TMDBRequestTests {
         #expect(snapshot.overview == "La française.")
     }
 
+    /// A show just looked up has its seasons in the details already fetched: no second request.
+    @Test func seasonsComeFromTheDetailsAlreadyFetched() async throws {
+        stubShow(#"{"id":1,"name":"X","seasons":[{"season_number":1,"episode_count":10}]}"#)
+        let tmdb = provider()
+
+        _ = try await tmdb.snapshot(for: Lookup(search: "X", kind: .series))
+        let seasons = try await tmdb.seasons(for: Identifiers(tmdb: 1), kind: .series)
+
+        #expect(seasons?.nativeSeasons.count == 1)
+        #expect(StubURLProtocol.requested.filter { $0.path == "/3/tv/1" }.count == 1)
+    }
+
+    /// The least recently used goes first: a response read again outlives older ones.
+    @Test func aCachedResponseReadAgainIsKeptLonger() async {
+        let cache = ResponseCache(limit: 2)
+        await cache.store(Data([1]), for: "a")
+        await cache.store(Data([2]), for: "b")
+        _ = await cache.data(for: "a")
+        await cache.store(Data([3]), for: "c")
+
+        #expect(await cache.data(for: "a") != nil)
+        #expect(await cache.data(for: "b") == nil)
+    }
+
     @Test func keywordsStudiosOriginAndStatusComeFromTheSameRequest() async throws {
         stubShow("""
         {"id":1,"name":"X","original_language":"ja","origin_country":["JP"],"status":"Ended",
          "networks":[{"name":"Fuji TV"}],
          "keywords":{"results":[{"name":"time travel"},{"name":"dystopia"}]},
          "last_episode_to_air":{"air_date":"2024-03-01"},
-         "next_episode_to_air":{"air_date":"2026-10-05"}}
+         "next_episode_to_air":{"air_date":"2026-10-05","season_number":3,"episode_number":1}}
         """)
 
         let snapshot = try #require(await provider().snapshot(for: Lookup(search: "X", kind: .series)))
@@ -266,6 +332,7 @@ extension TMDBRequestTests {
         #expect(snapshot.originCountries == ["JP"])
         #expect(snapshot.status == .ended, "TMDB says `Ended`, AniList says `FINISHED`, callers see one word")
         #expect(snapshot.nextEpisodeAirDate != nil)
+        #expect(snapshot.nextEpisode == EpisodePosition(season: 3, episode: 1), "a new season")
         #expect(snapshot.lastEpisodeAirDate != nil)
         // One request for all of it. (A Japanese show also asks for its Japanese
         // trailers, which is a separate question with its own path.)

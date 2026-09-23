@@ -10,7 +10,18 @@ public struct Candidate: Sendable, Equatable, Identifiable {
     public let kind: Kind
     public let title: String
     public let year: Int?
+    /// The day it comes out, or came out, where the list gives it: midnight UTC. Announcements
+    /// are often only a month or a year: then the first day of it, as ``releasePrecision`` says.
+    public let releaseDate: Date?
+    /// How much of ``releaseDate`` is known: `nil` without one, else `.day` unless the list says
+    /// less — in practice only AniList's charts, whose announcements are often a month or a year.
+    public let releasePrecision: DatePrecision?
     public let posterURL: URL?
+    public let backdropURL: URL?
+    /// ISO 639-1 of the language it was made in, where the list gives it.
+    public let originalLanguage: String?
+    /// The provider's genre ids — TMDB's, which ``TMDBProvider/genres(of:)`` names.
+    public let genreIDs: [Int]
     public let provider: Provider
 
     /// With the kind: TMDB numbers films and shows separately, and a film and
@@ -23,14 +34,21 @@ public struct Candidate: Sendable, Equatable, Identifiable {
     }
 
     public init(
-        ids: Identifiers, kind: Kind, title: String, year: Int? = nil,
-        posterURL: URL? = nil, provider: Provider
+        ids: Identifiers, kind: Kind, title: String, year: Int? = nil, releaseDate: Date? = nil,
+        releasePrecision: DatePrecision? = nil,
+        posterURL: URL? = nil, backdropURL: URL? = nil, originalLanguage: String? = nil,
+        genreIDs: [Int] = [], provider: Provider
     ) {
         self.ids = ids
         self.kind = kind
         self.title = title
         self.year = year
+        self.releaseDate = releaseDate
+        self.releasePrecision = releaseDate == nil ? nil : releasePrecision ?? .day
         self.posterURL = posterURL
+        self.backdropURL = backdropURL
+        self.originalLanguage = originalLanguage
+        self.genreIDs = genreIDs
         self.provider = provider
     }
 }
@@ -101,4 +119,23 @@ public enum TitleList: Sendable, Hashable {
         case .trendingToday, .trendingThisWeek: nil
         }
     }
+}
+
+/// One of TMDB's genres, as ``TMDBProvider/genres(of:)`` lists them: an id to browse
+/// with ``TMDBProvider/titles(inGenre:kind:page:)`` and its name in the provider's language.
+public struct TMDBGenre: Sendable, Hashable {
+    public let id: Int
+    public let name: String
+
+    public init(id: Int, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+/// How much of a date is known: an announcement may say only "October 2027", or "2027".
+public enum DatePrecision: Int, Sendable, Hashable, Comparable {
+    case year, month, day
+
+    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 }

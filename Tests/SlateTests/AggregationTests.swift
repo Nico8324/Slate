@@ -245,7 +245,9 @@ struct FieldCoverageTests {
             status: .airing,
             relations: [Relation(kind: .sequel, ids: Identifiers(aniList: 9), title: "Next")],
             nextEpisodeAirDate: Date(timeIntervalSince1970: 100),
+            nextEpisode: EpisodePosition(season: 2, episode: 1),
             lastEpisodeAirDate: Date(timeIntervalSince1970: 50),
+            homeReleaseDate: Date(timeIntervalSince1970: 200),
             searchNames: ["Title"]
         )
 

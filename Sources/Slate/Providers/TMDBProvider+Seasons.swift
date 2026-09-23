@@ -93,9 +93,8 @@ extension TMDBProvider {
     /// The structure, and whether it is TMDB's own seasons standing in because
     /// the correction could not be fetched.
     private func resolveSeasons(showID: Int) async throws -> (SeasonStructure?, isFallback: Bool) {
-        let page = try await http.json(ShowPage.self,
-                                       url: try URL.build(Self.api, path: "/tv/\(showID)",
-                                                          query: ["language": language]),
+        // The details request's own URL: a show just looked up has its seasons in the cache.
+        let page = try await http.json(ShowPage.self, url: try detailsURL(id: showID, kind: .series),
                                        headers: headers)
         let native = page.seasons?.map {
             Season(number: $0.season_number, name: $0.name?.nilIfEmpty, episodeCount: $0.episode_count ?? 0)

@@ -47,6 +47,58 @@ extension TMDBProvider {
                                     query: ["page": String(page), "region": region])
     }
 
+    /// TMDB's genres for films or for shows, named in the provider's `language`.
+    ///
+    /// The two lists differ — shows have "Action & Adventure" where films have
+    /// "Action" and "Adventure" — so a genre is looked up for the kind it browses.
+    public func genres(of kind: Kind) async throws -> [TMDBGenre] {
+        guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
+        let url = try URL.build(Self.api, path: kind == .movie ? "/genre/movie/list" : "/genre/tv/list",
+                                query: ["language": language])
+        return try await http.json(GenreList.self, url: url, headers: headers).genres
+            .map { TMDBGenre(id: $0.id, name: $0.name) }
+    }
+
+    /// One page of a genre's titles, most popular first.
+    ///
+    /// Only titles with some votes: sorted by popularity alone, discover lists
+    /// unrated uploads that nobody has heard of among the films people know.
+    public func titles(inGenre genreID: Int, kind: Kind, page: Int = 1) async throws -> [Candidate] {
+        guard (1...Self.lastPage).contains(page) else { return [] }
+        return try await candidates(
+            path: kind == .movie ? "/discover/movie" : "/discover/tv", kind: kind,
+            query: ["with_genres": String(genreID), "sort_by": "popularity.desc",
+                    "vote_count.gte": "50", "include_adult": "false", "page": String(page)]
+        )
+    }
+
+    /// Films or shows announced and not out yet, the most awaited first, with their
+    /// release dates — for a show, its premiere.
+    ///
+    /// Unlike ``TitleList/upcomingMovies`` — the next few weeks in cinemas of
+    /// one country — this reaches as far ahead as TMDB has dates, which is what
+    /// a list of what's been announced needs. Popularity first keeps the far
+    /// future's placeholders at the end. A title out today isn't upcoming —
+    /// today in `calendar`, the viewer's: at 20:00 in California it is already
+    /// tomorrow in UTC, and tomorrow's releases are still to come.
+    ///
+    /// New shows only: a returning show's next season is dated on its episodes,
+    /// which discover can't sort by without listing every show on the air.
+    public func upcoming(
+        _ kind: Kind, after day: Date = .now, calendar: Calendar = .current, page: Int = 1
+    ) async throws -> [Candidate] {
+        guard (1...Self.lastPage).contains(page) else { return [] }
+        // The day as release dates are kept: that calendar day at midnight UTC.
+        let parts = calendar.dateComponents([.year, .month, .day], from: day)
+        let from = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 1, parts.day ?? 1)
+        guard let today = from.asReleaseDate else { return [] }
+        return try await candidates(
+            path: kind == .movie ? "/discover/movie" : "/discover/tv", kind: kind,
+            query: [kind == .movie ? "primary_release_date.gte" : "first_air_date.gte": from,
+                    "sort_by": "popularity.desc", "include_adult": "false", "page": String(page)]
+        ).filter { ($0.releaseDate ?? .distantPast) > today }
+    }
+
     /// Everything a person is credited in, most recent first.
     ///
     /// Both departments in one list: someone who directed one film and acted in
@@ -120,6 +172,11 @@ extension TMDBProvider {
             .compactMap { $0.candidate(assuming: kind) }
     }
 
+    struct GenreList: Decodable {
+        struct Entry: Decodable { let id: Int; let name: String }
+        let genres: [Entry]
+    }
+
     struct CandidateResponse: Decodable {
         struct Hit: Decodable {
             let id: Int
@@ -129,6 +186,9 @@ extension TMDBProvider {
             var first_air_date: String?
             var release_date: String?
             var poster_path: String?
+            var backdrop_path: String?
+            var original_language: String?
+            var genre_ids: [Int]?
 
             func candidate(assuming kind: Kind?) -> Candidate? {
                 let resolved: Kind? = switch media_type {
@@ -139,10 +199,13 @@ extension TMDBProvider {
                 case nil: kind
                 }
                 guard let resolved, let title = (title ?? name)?.nilIfEmpty else { return nil }
+                let date = release_date ?? first_air_date
                 return Candidate(
                     ids: Identifiers(tmdb: id), kind: resolved, title: title,
-                    year: (release_date ?? first_air_date).flatMap { Int($0.prefix(4)) },
-                    posterURL: TMDBProvider.imageURL(poster_path), provider: .tmdb
+                    year: date.flatMap { Int($0.prefix(4)) }, releaseDate: date?.asReleaseDate,
+                    posterURL: TMDBProvider.imageURL(poster_path),
+                    backdropURL: TMDBProvider.imageURL(backdrop_path),
+                    originalLanguage: original_language, genreIDs: genre_ids ?? [], provider: .tmdb
                 )
             }
         }

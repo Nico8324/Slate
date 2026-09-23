@@ -104,7 +104,13 @@ public struct Snapshot: Sendable, Equatable {
     /// When the next episode airs, for a series still running. AniList states
     /// the broadcast moment; TMDB only the day, as midnight UTC.
     public var nextEpisodeAirDate: Date?
+    /// Which episode airs next, for a series still running: a new season when it's
+    /// episode 1.
+    public var nextEpisode: EpisodePosition?
     public var lastEpisodeAirDate: Date?
+    /// When a film can first be watched at home — its first digital release —
+    /// as opposed to ``releaseDate``, which for a film is when it opens in cinemas.
+    public var homeReleaseDate: Date?
     /// Names to search by, this provider's preferred order first.
     public var searchNames: [String]
     /// Whether the provider matched a name only approximately. A loose match
@@ -141,7 +147,9 @@ public struct Snapshot: Sendable, Equatable {
         status: ReleaseStatus? = nil,
         relations: [Relation]? = nil,
         nextEpisodeAirDate: Date? = nil,
+        nextEpisode: EpisodePosition? = nil,
         lastEpisodeAirDate: Date? = nil,
+        homeReleaseDate: Date? = nil,
         searchNames: [String] = []
     ) {
         self.ids = ids.validated
@@ -173,7 +181,9 @@ public struct Snapshot: Sendable, Equatable {
         self.status = status
         self.relations = relations
         self.nextEpisodeAirDate = nextEpisodeAirDate
+        self.nextEpisode = nextEpisode
         self.lastEpisodeAirDate = lastEpisodeAirDate
+        self.homeReleaseDate = homeReleaseDate
         self.searchNames = searchNames.deduplicatedNames
     }
 }

@@ -91,6 +91,12 @@ actor ResponseCache {
             order.removeAll { $0 == key }
             return nil
         }
+        // Least recently used goes first, not least recently fetched: a title opened again and
+        // again stays while the rest of a busy hour passes through.
+        if order.last != key, let index = order.firstIndex(of: key) {
+            order.remove(at: index)
+            order.append(key)
+        }
         return entry.data
     }
 

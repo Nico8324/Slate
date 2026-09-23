@@ -51,6 +51,103 @@ extension TMDBRequestTests {
         #expect(titles.map(\.kind) == [.movie, .series])
     }
 
+    @Test func genresAreListedPerKind() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/genre/tv/list", json: #"{"genres":[{"id":10759,"name":"Action & Adventure"}]}"#)
+
+        let genres = try await provider().genres(of: .series)
+
+        #expect(genres == [TMDBGenre(id: 10759, name: "Action & Adventure")])
+    }
+
+    @Test func aGenreIsBrowsedByPopularityAmongTitlesPeopleRated() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/discover/movie", json: #"{"results":[{"id":1,"title":"A","release_date":"2020-01-01"}]}"#)
+
+        let titles = try await provider().titles(inGenre: 28, kind: .movie, page: 2)
+
+        #expect(titles.map(\.kind) == [.movie])
+        let asked = try #require(StubURLProtocol.requested.last?.query)
+        #expect(asked.contains("with_genres=28"))
+        #expect(asked.contains("sort_by=popularity.desc"))
+        #expect(asked.contains("vote_count.gte=50"))
+        #expect(asked.contains("page=2"))
+    }
+
+    @Test func aGenrePagePastTheLastIsEmptyWithoutAsking() async throws {
+        StubURLProtocol.reset()
+        #expect(try await provider().titles(inGenre: 28, kind: .movie, page: TMDBProvider.lastPage + 1).isEmpty)
+        #expect(StubURLProtocol.requested.isEmpty)
+    }
+
+    @Test func upcomingFilmsAreThoseNotOutYetWithTheirDates() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/discover/movie", json: """
+        {"results":[{"id":1,"title":"Soon","release_date":"2027-03-12","backdrop_path":"/b.jpg"},
+                    {"id":2,"title":"Today","release_date":"2026-09-23"},
+                    {"id":3,"title":"Undated"}]}
+        """)
+        let day = try Date("2026-09-23T12:00:00Z", strategy: .iso8601)
+
+        let films = try await provider().upcoming(.movie, after: day)
+
+        #expect(films.map(\.title) == ["Soon"])
+        #expect(films.first?.releaseDate == (try Date("2027-03-12T00:00:00Z", strategy: .iso8601)))
+        #expect(films.first?.backdropURL != nil)
+        let asked = try #require(StubURLProtocol.requested.last?.query)
+        #expect(asked.contains("primary_release_date.gte=2026-09-23"))
+        #expect(asked.contains("sort_by=popularity.desc"))
+    }
+
+    @Test func upcomingShowsAreThosePremieringLater() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/discover/tv", json: #"{"results":[{"id":1,"name":"New","first_air_date":"2027-01-08","original_language":"ja","genre_ids":[16,10759]}]}"#)
+        let day = try Date("2026-09-23T12:00:00Z", strategy: .iso8601)
+
+        let shows = try await provider().upcoming(.series, after: day)
+
+        #expect(shows.map(\.kind) == [.series])
+        #expect(shows.first?.originalLanguage == "ja")
+        #expect(shows.first?.genreIDs == [16, 10759])
+        #expect(shows.first?.releaseDate == (try Date("2027-01-08T00:00:00Z", strategy: .iso8601)))
+        let asked = try #require(StubURLProtocol.requested.last?.query)
+        #expect(asked.contains("first_air_date.gte=2026-09-23"))
+    }
+
+    @Test func filmGenresAreTheirOwnList() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/genre/movie/list", json: #"{"genres":[{"id":28,"name":"Action"}]}"#)
+
+        #expect(try await provider().genres(of: .movie) == [TMDBGenre(id: 28, name: "Action")])
+        #expect(StubURLProtocol.requested.last?.path == "/3/genre/movie/list")
+    }
+
+    @Test func genresNeedAToken() async throws {
+        await #expect(throws: SlateError.missingCredential(.tmdb)) {
+            try await TMDBProvider(accessToken: "", session: StubURLProtocol.session).genres(of: .movie)
+        }
+    }
+
+    /// Today is the viewer's: at 20:00 in California it's already tomorrow in UTC, and
+    /// tomorrow's releases are still to come.
+    @Test func upcomingCountsTodayInTheViewersCalendar() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/discover/movie", json: """
+        {"results":[{"id":1,"title":"Today","release_date":"2026-09-23"},
+                    {"id":2,"title":"Tomorrow","release_date":"2026-09-24"}]}
+        """)
+        var california = Calendar(identifier: .gregorian)
+        california.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        // 20:00 on the 23rd in California, 03:00 on the 24th in UTC.
+        let evening = try Date("2026-09-24T03:00:00Z", strategy: .iso8601)
+
+        let films = try await provider().upcoming(.movie, after: evening, calendar: california)
+
+        #expect(films.map(\.title) == ["Tomorrow"])
+        let asked = try #require(StubURLProtocol.requested.last?.query)
+        #expect(asked.contains("primary_release_date.gte=2026-09-23"))
+    }
+
     @Test func aFilmographyIsBothDepartmentsNewestFirst() async throws {
         StubURLProtocol.reset()
         StubURLProtocol.stub("/person/1/combined_credits", json: """

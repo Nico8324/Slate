@@ -315,7 +315,9 @@ public struct MetadataAggregator: Sendable {
         result.status = field(.status, snapshots) { $0.status }
         result.relations = field(.relations, snapshots) { $0.relations }
         result.nextEpisodeAirDate = field(.nextEpisodeAirDate, snapshots) { $0.nextEpisodeAirDate }
+        result.nextEpisode = field(.nextEpisode, snapshots) { $0.nextEpisode }
         result.lastEpisodeAirDate = field(.lastEpisodeAirDate, snapshots) { $0.lastEpisodeAirDate }
+        result.homeReleaseDate = field(.homeReleaseDate, snapshots) { $0.homeReleaseDate }
         result.trailerYouTubeID = field(.trailerYouTubeID, snapshots) { $0.trailerYouTubeID }
 
         result.searchNames = sorted(snapshots, by: priority).flatMap(\.1.searchNames).deduplicatedNames

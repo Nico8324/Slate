@@ -304,8 +304,10 @@ other providers still answer. Direct provider calls throw.
 - ``Relation``
 - ``ReleaseStatus``
 - ``Candidate``
+- ``DatePrecision``
 - ``Person``
 - ``TitleList``
+- ``TMDBGenre``
 
 ### Errors
 

@@ -54,7 +54,7 @@ public enum FieldKey: String, Sendable, Hashable, CaseIterable {
     case contentRating, trailerYouTubeID, cast, ratings
     case crew, trailers, recommendations
     case watchOptions, keywords, studios, originalLanguage, originCountries
-    case franchise, status, nextEpisodeAirDate, lastEpisodeAirDate, relations
+    case franchise, status, nextEpisodeAirDate, nextEpisode, lastEpisodeAirDate, homeReleaseDate, relations
 }
 
 /// The aggregated answer for one title: every field carries every provider's
@@ -99,7 +99,11 @@ public struct TitleMetadata: Sendable, Equatable {
     /// Sequels, prequels, side stories. See ``Relation``.
     public var relations: Field<[Relation]>
     public var nextEpisodeAirDate: Field<Date>
+    /// Which episode airs next; a new season when it's episode 1.
+    public var nextEpisode: Field<EpisodePosition>
     public var lastEpisodeAirDate: Field<Date>
+    /// When a film can first be watched at home, rather than seen in cinemas.
+    public var homeReleaseDate: Field<Date>
 
     /// Every name this title is known by, highest-priority provider first and
     /// deduplicated — romaji ahead of English for anime, because that is what a
@@ -141,7 +145,9 @@ public struct TitleMetadata: Sendable, Equatable {
         status: Field<ReleaseStatus> = .init(),
         relations: Field<[Relation]> = .init(),
         nextEpisodeAirDate: Field<Date> = .init(),
+        nextEpisode: Field<EpisodePosition> = .init(),
         lastEpisodeAirDate: Field<Date> = .init(),
+        homeReleaseDate: Field<Date> = .init(),
         searchNames: [String] = [],
         failures: [Provider: String] = [:]
     ) {
@@ -174,7 +180,9 @@ public struct TitleMetadata: Sendable, Equatable {
         self.status = status
         self.relations = relations
         self.nextEpisodeAirDate = nextEpisodeAirDate
+        self.nextEpisode = nextEpisode
         self.lastEpisodeAirDate = lastEpisodeAirDate
+        self.homeReleaseDate = homeReleaseDate
         self.searchNames = searchNames
         self.failures = failures
     }
@@ -240,7 +248,9 @@ extension TitleMetadata {
         case .status: status.candidates.map(\.provider)
         case .relations: relations.candidates.map(\.provider)
         case .nextEpisodeAirDate: nextEpisodeAirDate.candidates.map(\.provider)
+        case .nextEpisode: nextEpisode.candidates.map(\.provider)
         case .lastEpisodeAirDate: lastEpisodeAirDate.candidates.map(\.provider)
+        case .homeReleaseDate: homeReleaseDate.candidates.map(\.provider)
         }
     }
 

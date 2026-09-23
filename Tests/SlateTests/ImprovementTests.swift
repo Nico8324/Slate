@@ -18,6 +18,24 @@ extension TMDBRequestTests {
             #expect(result?.ids.aniList == 2)
         }
 
+        /// Announcements are often only "October 2027", or "2027": the first day of what's
+        /// known, and how much is.
+        @Test func anAnnouncedAnimeKeepsHowMuchOfItsDateIsKnown() async throws {
+            StubURLProtocol.reset()
+            StubURLProtocol.stub("graphql.anilist.co", json: """
+            {"data":{"Page":{"media":[
+              {"id":1,"format":"TV","startDate":{"year":2026,"month":10,"day":2},"title":{"romaji":"Day"}},
+              {"id":2,"format":"TV","startDate":{"year":2027,"month":10},"title":{"romaji":"Month"}},
+              {"id":3,"format":"TV","startDate":{"year":2027},"title":{"romaji":"Year"}},
+              {"id":4,"format":"TV","startDate":{},"title":{"romaji":"Unknown"}}]}}}
+            """)
+            let titles = try await AniListProvider(session: StubURLProtocol.session).titles(in: .upcoming, kind: .series)
+
+            #expect(titles.map(\.releasePrecision) == [.day, .month, .year, nil])
+            #expect(titles[1].releaseDate == (try Date("2027-10-01T00:00:00Z", strategy: .iso8601)))
+            #expect(titles[3].releaseDate == nil)
+        }
+
         @Test func inflatedGroupCountsDoNotHideMissingEpisodes() async throws {
             StubURLProtocol.reset()
             StubURLProtocol.stub("/tv/1", json: #"{"seasons":[{"season_number":1,"episode_count":60}]}"#)

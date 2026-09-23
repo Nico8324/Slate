@@ -105,7 +105,7 @@ for (field, provider) in result.provenance {
 ```
 
 Twenty-six hand-written branches drift apart. A loop does not — and `FieldKey`
-has grown from thirteen cases to twenty-six since that sentence was written,
+has grown from thirteen cases to thirty-one since that sentence was written,
 which is the argument making itself.
 
 ## 🔌 Providers
@@ -288,6 +288,8 @@ own type** — and the type you reached for *is* the attribution.
 await slate.metadata(for: lookup)          // several answer; provenance per field
 try await tmdb.candidates(for: "Dragon Ball")  // one answers; the ranking is TMDB's
 try await tmdb.titles(in: .popularShows)
+try await tmdb.titles(inGenre: 28, kind: .movie)  // TMDB's genres(of:) name the ids
+try await tmdb.upcoming(.movie)                    // announced, not out yet
 try await tmdb.person(id: 287)
 try await tmdb.filmography(personID: 287)
 ```
@@ -473,8 +475,9 @@ Keys travel as `Authorization: Bearer`, never in a query string — except MDBLi
 
 `region` defaults to `US` and is not cosmetic: it picks the age rating
 (`TV-MA` in the US, `16` in France — not translations of each other), the
-streaming services reported by `watchOptions`, and the release-date window
-behind `.nowPlayingMovies` and `.upcomingMovies`. Left at `US` for someone
+streaming services reported by `watchOptions`, the digital release behind
+`homeReleaseDate`, and the release-date window behind `.nowPlayingMovies` and
+`.upcomingMovies`. Left at `US` for someone
 elsewhere, availability lists services they cannot subscribe to, which is worse
 than listing none.
 
