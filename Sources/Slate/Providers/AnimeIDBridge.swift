@@ -144,7 +144,10 @@ public actor AnimeIDBridge: MetadataProvider {
         try await load()
         guard let entry = byAniList[id] else { return nil }
         let tmdb: Int? = switch entry.themoviedb_id {
-        case .bare(let value)?: value
+        // A bare number doesn't say whether it numbers a film or a show, and TMDB numbers
+        // them separately: read as a film it named unrelated films. Only a show takes it;
+        // a film goes by its IMDb id instead.
+        case .bare(let value)?: kind == .series ? value : nil
         case .keyed(let tv, let movie)?: kind == .movie ? (movie ?? tv) : (tv ?? movie)
         case nil: nil
         }

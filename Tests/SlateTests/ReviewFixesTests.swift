@@ -333,6 +333,7 @@ struct ReviewFixes {
         [{"anilist_id":300,"mal_id":300,"imdb_id":["tt0102847"],"themoviedb_id":{"tv":62913},"season":{"tmdb":1}},
          {"anilist_id":1225,"mal_id":1225,"imdb_id":["tt0102847"],"themoviedb_id":{"tv":62913},"season":{"tmdb":2}},
          {"anilist_id":7,"themoviedb_id":{"movie":55}},
+         {"anilist_id":6,"imdb_id":"tt6","themoviedb_id":66},
          {"anilist_id":8}]
         """.utf8))
         let bridge = AnimeIDBridge()
@@ -343,6 +344,10 @@ struct ReviewFixes {
         #expect(second.ids.imdb == "tt0102847")
         #expect(second.season == 2, "a sequel work is a season of the same show")
         #expect(try await bridge.broadcastIDs(ofAniList: 7, kind: .movie)?.ids.tmdb == 55)
+        let bareFilm = try #require(await bridge.broadcastIDs(ofAniList: 6, kind: .movie))
+        #expect(bareFilm.ids.tmdb == nil, "a bare number may be a show's; a film goes by IMDb")
+        #expect(bareFilm.ids.imdb == "tt6")
+        #expect(try await bridge.broadcastIDs(ofAniList: 6, kind: .series)?.ids.tmdb == 66)
         #expect(try await bridge.broadcastIDs(ofAniList: 8, kind: .series) == nil, "no broadcast id to give")
         #expect(try await bridge.broadcastIDs(ofAniList: 999, kind: .series) == nil)
     }

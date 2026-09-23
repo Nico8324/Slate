@@ -12,7 +12,9 @@ All notable changes to Slate. Format follows
   popular, this season, top rated and upcoming, for series or films, ranked by AniList.
   `AniListChart`.
 - `AnimeIDBridge.broadcastIDs(ofAniList:kind:)`: an AniList work's IMDb and TMDB ids,
-  and the TMDB season it is — the direction `snapshot(for:)` does not go.
+  and the TMDB season it is — the direction `snapshot(for:)` does not go. A bare
+  `themoviedb_id`, which doesn't say film or show, is only used for a show; a film
+  goes by its IMDb id.
 
 ### Fixed
 
