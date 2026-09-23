@@ -67,6 +67,19 @@ extension TMDBProvider {
             .sorted { ($0.year ?? 0) > ($1.year ?? 0) }
     }
 
+    /// The films of a collection — a ``Franchise`` — in release order.
+    ///
+    /// Unreleased entries without a date come last. The franchise comes from
+    /// ``TitleMetadata/franchise``; this is the one request that lists what is in it.
+    public func collection(id: Int) async throws -> [Candidate] {
+        guard id > 0 else { throw SlateError.invalidLookup }
+        guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
+        let url = try URL.build(Self.api, path: "/collection/\(id)", query: ["language": language])
+        return try await http.json(CollectionPayload.self, url: url, headers: headers).parts
+            .compactMap { $0.candidate(assuming: .movie) }
+            .sorted { ($0.year ?? .max) < ($1.year ?? .max) }
+    }
+
     public func person(id: Int) async throws -> Person? {
         guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
         let url = try URL.build(Self.api, path: "/person/\(id)", query: ["language": language])
@@ -134,6 +147,10 @@ extension TMDBProvider {
             }
         }
         var results: [Hit] = []
+    }
+
+    private struct CollectionPayload: Decodable {
+        var parts: [CandidateResponse.Hit] = []
     }
 
     private struct CombinedCredits: Decodable {

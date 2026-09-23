@@ -351,5 +351,20 @@ struct ReviewFixes {
         #expect(try await bridge.broadcastIDs(ofAniList: 8, kind: .series) == nil, "no broadcast id to give")
         #expect(try await bridge.broadcastIDs(ofAniList: 999, kind: .series) == nil)
     }
+
+    // MARK: - Collections
+
+    @Test func aCollectionListsItsFilmsInReleaseOrder() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.stub("/collection/726871", json: """
+        {"id":726871,"name":"Dune Collection","parts":[
+          {"id":693134,"title":"Dune: Part Two","release_date":"2024-02-27","poster_path":"/2.jpg"},
+          {"id":1170608,"title":"Dune: Part Three","poster_path":"/3.jpg"},
+          {"id":438631,"title":"Dune","release_date":"2021-09-15","poster_path":"/1.jpg"}]}
+        """)
+        let films = try await tmdb().collection(id: 726871)
+        #expect(films.map(\.title) == ["Dune", "Dune: Part Two", "Dune: Part Three"], "undated last")
+        #expect(films.allSatisfy { $0.kind == .movie })
+    }
 }
 }

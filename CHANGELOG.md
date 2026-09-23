@@ -6,6 +6,10 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- `TMDBProvider.collection(id:)`: the films of a franchise, in release order.
+
 ## [0.16.0] — 2026-09-23
 
 ### Added
