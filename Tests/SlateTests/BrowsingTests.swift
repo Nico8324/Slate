@@ -336,6 +336,22 @@ struct CorrectedSearchTests {
         #expect(people.map(\.id) == [1, 3], "the correction first, then what the query found")
     }
 
+    /// Typed as far as "sidney sw": the start of the name is misspelled and the rest isn't typed yet.
+    @Test func aHalfTypedMisspelledNameFindsThePerson() async throws {
+        stub.respond { request in
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "query" }?.value
+            return .init(body: query == "sw"
+                ? #"{"results":[{"id":1,"name":"Sydney Sweeney","popularity":90},{"id":4,"name":"Tilda Swinton","popularity":40}]}"#
+                : #"{"results":[{"id":5,"name":"Sidney Sweibel","popularity":1},{"id":6,"name":"Matthew Sweet","popularity":2}]}"#)
+        }
+        let tmdb = TMDBProvider(accessToken: "t", transport: stub.transport)
+        let (people, correction) = try await tmdb.searchPeople(correcting: "sidney sw")
+        #expect(correction == "Sydney Sweeney")
+        #expect(people.first?.id == 1)
+        #expect(!people.contains { $0.id == 4 }, "a popular Sw… who isn't a Sidney stays out")
+    }
+
     @Test func editDistanceIgnoresCaseAndAccents() {
         #expect(TMDBProvider.distance("sidney sweeney", "Sydney Sweeney") == 1)
         #expect(TMDBProvider.distance("Timothee Chalamet", "Timothée Chalamet") == 0)
@@ -343,5 +359,7 @@ struct CorrectedSearchTests {
         #expect(TMDBProvider.nearbyQueries("inceptoin") == ["incep"])
         #expect(TMDBProvider.nearbyQueries("sidney sweeney") == ["sweeney", "swee", "sidney"])
         #expect(TMDBProvider.nearbyQueries("up").isEmpty)
+        // A last word still being typed is searched as it is: TMDB matches it as a name's start.
+        #expect(TMDBProvider.nearbyQueries("sidney sw") == ["sw", "sid"])
     }
 }

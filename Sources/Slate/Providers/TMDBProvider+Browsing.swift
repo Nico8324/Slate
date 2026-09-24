@@ -225,12 +225,13 @@ extension TMDBProvider {
         return (people.filter { seen.insert($0.id).inserted }, correction)
     }
 
-    /// What to search when a query finds nothing close: its two longest words when
-    /// there are several, and their beginnings, which TMDB matches — "incep" finds
-    /// Inception. Three at most.
+    /// What to search when a query finds nothing close: a last word still being typed,
+    /// which TMDB matches as the start of a name, most popular first — "sidney sw" finds
+    /// Sydney Sweeney by "sw"; then its two longest words when there are several, and
+    /// their beginnings — "incep" finds Inception. Three of those at most.
     static func nearbyQueries(_ query: String) -> [String] {
-        let words = query.split(separator: " ").map(String.init).filter { $0.count >= 4 }
-            .sorted { $0.count > $1.count }.prefix(2)
+        let typed = query.split(separator: " ").map(String.init)
+        let words = typed.filter { $0.count >= 4 }.sorted { $0.count > $1.count }.prefix(2)
         var queries: [String] = []
         for word in words {
             if words.count > 1 { queries.append(word) }
@@ -238,13 +239,19 @@ extension TMDBProvider {
             if beginning != word { queries.append(beginning) }
         }
         var seen = Set<String>()
-        return Array(queries.filter { seen.insert($0.lowercased()).inserted }.prefix(3))
+        let nearby = Array(queries.filter { seen.insert($0.lowercased()).inserted }.prefix(3))
+        guard typed.count > 1, let last = typed.last, (2..<4).contains(last.count) else { return nearby }
+        return [last] + nearby
     }
 
-    /// The items whose name is within two edits of `query`, or a sixth of a long one.
+    /// The items whose name — or its beginning, for a query still being typed — is within two
+    /// edits of `query`, or a sixth of a long one: "sidney sw" is one from "Sydney Sw…".
     static func closeMatches<Item>(_ items: [Item], to query: String, name: (Item) -> String) -> [Item] {
         let allowed = max(2, query.count / 6)
-        return items.filter { distance(name($0), query) <= allowed }
+        return items.filter {
+            let name = name($0)
+            return min(distance(name, query), distance(String(name.prefix(query.count)), query)) <= allowed
+        }
     }
 
     /// Levenshtein distance, ignoring case and accents.
