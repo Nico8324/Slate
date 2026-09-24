@@ -132,7 +132,7 @@ struct AggregationTests {
 
 struct ProviderTests {
     @Test func tmdbRefusesToWorkWithoutACredential() async {
-        let provider = TMDBProvider(accessToken: "")
+        let provider = TMDBProvider(accessToken: "", transport: Stub().transport)
 
         await #expect(throws: SlateError.missingCredential(.tmdb)) {
             try await provider.snapshot(for: Lookup(search: "Dune"))
@@ -141,7 +141,7 @@ struct ProviderTests {
 
     @Test func aniListSkipsLookupsWithNoNameToSearchBy() async throws {
         // There is no id bridge from IMDb to AniList, so this cannot be asked.
-        let result = try await AniListProvider().snapshot(for: Lookup(imdbID: "tt0111161"))
+        let result = try await AniListProvider(transport: Stub().transport).snapshot(for: Lookup(imdbID: "tt0111161"))
 
         #expect(result == nil)
     }
@@ -248,11 +248,59 @@ struct FieldCoverageTests {
             nextEpisode: EpisodePosition(season: 2, episode: 1),
             lastEpisodeAirDate: Date(timeIntervalSince1970: 50),
             homeReleaseDate: Date(timeIntervalSince1970: 200),
+            artwork: ArtworkSet(posters: [Artwork(kind: .poster, url: URL(string: "https://example.invalid/p.jpg")!, provider: .tmdb)]),
             searchNames: ["Title"]
         )
 
         let result = MetadataAggregator(providers: []).assemble([.tmdb: everything])
         let missing = FieldKey.allCases.filter { result.providersConsulted(for: $0).isEmpty }
         #expect(missing.isEmpty, "assemble() never reads: \(missing.map { $0.rawValue }.sorted())")
+    }
+}
+
+struct ConflictTests {
+    @Test func aLooseMatchLosesAKindConflictToAPreciseOne() {
+        var loose = Snapshot(ids: Identifiers(aniList: 1), kind: .series, title: "Love Live!")
+        loose.matchedLoosely = true
+        let precise = Snapshot(ids: Identifiers(imdb: "tt3", tmdb: 3), kind: .movie, title: "Love")
+        let result = MetadataAggregator(providers: []).assemble([.aniList: loose, .tmdb: precise])
+        #expect(result.kind.best == .movie)
+        #expect(result.ids.imdb == "tt3")
+        #expect(result.failures[.aniList] != nil)
+    }
+
+    @Test func idsLearnedMidLookupAreNotTreatedAsExplicit() async {
+        struct TMDBLike: MetadataProvider {
+            let provider = Provider.tmdb
+            func snapshot(for lookup: Lookup) async throws -> Snapshot? {
+                Snapshot(ids: Identifiers(imdb: "tt1"), kind: .series, title: "TMDB")
+            }
+        }
+        struct Bridge: MetadataProvider {
+            let provider = Provider.fribb
+            func snapshot(for lookup: Lookup) async throws -> Snapshot? {
+                lookup.ids.imdb == nil ? nil : Snapshot(ids: Identifiers(aniList: 10, myAnimeList: 5))
+            }
+        }
+        struct AniListLike: MetadataProvider {
+            let provider = Provider.aniList
+            func snapshot(for lookup: Lookup) async throws -> Snapshot? {
+                lookup.ids.aniList == nil ? nil
+                    : Snapshot(ids: Identifiers(aniList: 10, myAnimeList: 6), kind: .series, title: "AniList")
+            }
+        }
+        let result = await MetadataAggregator(providers: [TMDBLike(), Bridge(), AniListLike()])
+            .metadata(for: Lookup(search: "X"))
+        #expect(result.title.value(from: .aniList) == "AniList",
+                "the bridge's MyAnimeList id disagreed, which priority settles — not a rejection")
+    }
+
+    @Test func omittedProvidersHaveAStableOrder() {
+        let aggregator = MetadataAggregator(providers: [], priority: [], fieldPriority: [:])
+        let result = aggregator.assemble([
+            .tmdb: Snapshot(title: "TMDB"), .aniList: Snapshot(title: "AniList"),
+            .mdbList: Snapshot(title: "MDBList"), .fribb: Snapshot(title: "Bridge")
+        ])
+        #expect(result.title.candidates.map(\.provider) == [.aniList, .fribb, .mdbList, .tmdb])
     }
 }

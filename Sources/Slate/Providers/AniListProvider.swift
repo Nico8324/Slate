@@ -18,16 +18,22 @@ public struct AniListProvider: MetadataProvider, Sendable {
     /// `AniListProvider()` called per lookup is paced against nothing and the
     /// only symptom is 429s arriving later than they should have. Nothing in the
     /// type signature says this, which is why it is written here.
-    /// - Parameter session: Session used for requests; injectable for tests.
+    /// - Parameter session: Session used for requests.
     /// - Parameter cacheTTL: Cache lifetime in seconds; defaults to one hour.
     ///   Zero disables retention. Finite values are clamped to 0…365 days;
     ///   non-finite values use the default. Expired entries refresh on demand.
+    ///   Responses are also kept on disk, in `Caches/Slate/aniList`.
     public init(session: URLSession = .shared, cacheTTL: TimeInterval = 3600) {
+        self.init(cacheTTL: cacheTTL, transport: { try await session.data(for: $0) },
+                  cacheDirectory: ResponseCache.directory(for: .aniList))
+    }
+
+    init(cacheTTL: TimeInterval = 3600, transport: @escaping HTTP.Transport, cacheDirectory: URL? = nil) {
         // AniList allows about ninety requests a minute. Staying just inside it
         // is the difference between a library scan finishing and a wall of 429s
         // that reads as the provider being down.
-        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 1.4),
-                         cache: ResponseCache(ttl: cacheTTL), provider: .aniList)
+        self.http = HTTP(transport: transport, limiter: RateLimiter(requestsPerSecond: 1.4),
+                         cache: ResponseCache(ttl: cacheTTL, directory: cacheDirectory), provider: .aniList)
     }
 
     /// Discard cached responses and cancel in-progress requests.
@@ -36,27 +42,18 @@ public struct AniListProvider: MetadataProvider, Sendable {
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
         try lookup.validate()
         try Task.checkCancellation()
-        // AniList numbers the work, not the broadcast, so it cannot answer an
-        // IMDb or TMDB id directly — a name, or an AniList id someone else
-        // supplied, is the only way in. `AnimeIDBridge` is that someone: it
-        // turns a broadcast id into an AniList one and the aggregator asks
-        // again in a later round. Without it in the providers, an id-only
-        // lookup reaches this and there is nothing to ask.
+        // AniList numbers the work, not the broadcast: only a name or an AniList id
+        // (from `AnimeIDBridge`, in a later round) can reach it.
         guard lookup.ids.aniList != nil || lookup.query != nil else {
-            // The gap that made an id-only lookup silently romaji-less before
-            // AnimeIDBridge existed, and still does when it is not wired.
-            Log.aniList.debug(
-                "no AniList id and no name — AniList numbers the work, not the broadcast, so there is nothing to ask. Wire AnimeIDBridge to reach it from a broadcast id"
-            )
+            Log.aniList.debug("no AniList id or name to ask by")
             return nil
         }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        // A filtered search keeps paging until something passes the filter; an
-        // unfiltered one is decided by relevance within the first few pages, and
-        // paging on only spent a minute of AniList's allowance on a miss.
-        let pageLimit = lookup.ids.aniList != nil ? 1 : (lookup.year != nil || lookup.kind != nil ? 20 : 3)
+        // Relevance decides within the first few pages, filtered or not; paging on
+        // only spends AniList's allowance on a miss.
+        let pageLimit = lookup.ids.aniList != nil ? 1 : 3
         for page in 1...pageLimit {
             try Task.checkCancellation()
             let body = try encoder.encode(Request(

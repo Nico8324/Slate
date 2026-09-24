@@ -27,7 +27,9 @@ public actor AnimeIDBridge: MetadataProvider {
         string: "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json"
     )!
 
-    private let session: URLSession
+    private let transport: HTTP.Transport
+    /// The raw list and its ETag are kept here, so a launch revalidates instead of downloading.
+    private let directory: URL?
     private var byIMDb: [String: [Entry]] = [:]
     /// TMDB numbers films and shows separately, so a TV id and a film id can
     /// be the same number: one map for each, and a bare number (the list
@@ -36,7 +38,9 @@ public actor AnimeIDBridge: MetadataProvider {
     private var byTMDBMovie: [Int: [Entry]] = [:]
     private var byAniList: [Int: Entry] = [:]
     private var loaded = false
-    private let downloads = ResponseCache(limit: 0)
+    /// Holds the download only until it is indexed, so a caller arriving just
+    /// after it finished reuses it rather than downloading again.
+    private let downloads = ResponseCache(limit: 1, ttl: 60, byteLimit: 64 * 1024 * 1024)
     private let lifetime: Duration
     private var expires: ContinuousClock.Instant?
     private var generation = 0
@@ -49,12 +53,19 @@ public actor AnimeIDBridge: MetadataProvider {
     /// The one-instance rule costs more here than anywhere else in Slate. A
     /// provider built per lookup is merely unpaced; a *bridge* built per lookup
     /// downloads 7.5 MB per lookup, because the index it builds is the instance.
-    /// - Parameter session: Session used for requests; injectable for tests.
+    /// - Parameter session: Session used for requests.
     /// - Parameter cacheTTL: Index lifetime in seconds; defaults to 24 hours.
     ///   Zero disables retention. Finite values are clamped to 0…365 days;
-    ///   non-finite values use the default. Refresh occurs on demand.
+    ///   non-finite values use the default. Refresh occurs on demand. The list is
+    ///   kept on disk in `Caches/Slate/fribb` and revalidated with its ETag.
     public init(session: URLSession = .shared, cacheTTL: TimeInterval = 86_400) {
-        self.session = session
+        self.init(cacheTTL: cacheTTL, transport: { try await session.data(for: $0) },
+                  directory: ResponseCache.directory(for: .fribb))
+    }
+
+    init(cacheTTL: TimeInterval = 86_400, transport: @escaping HTTP.Transport, directory: URL? = nil) {
+        self.transport = transport
+        self.directory = directory
         self.lifetime = .seconds(cacheTTL.isFinite ? min(max(0, cacheTTL), 31_536_000) : 86_400)
     }
 
@@ -69,6 +80,7 @@ public actor AnimeIDBridge: MetadataProvider {
         byTMDBTV.removeAll()
         byTMDBMovie.removeAll()
         await downloads.removeAll()
+        if let directory { try? FileManager.default.removeItem(at: directory) }
     }
 
     public func snapshot(for lookup: Lookup) async throws -> Snapshot? {
@@ -161,15 +173,11 @@ public actor AnimeIDBridge: MetadataProvider {
         try Task.checkCancellation()
         if loaded, let expires, expires > .now { return }
         let revision = generation
-        let session = self.session
+        let (transport, directory, fresh) = (self.transport, self.directory, loaded ? nil : lifetime)
         let data: Data
         do {
             data = try await downloads.data(for: "bridge") {
-                let (data, response) = try await session.data(from: Self.listURL)
-                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                    throw SlateError.http(status: http.statusCode, body: "")
-                }
-                return data
+                try await Self.download(transport, directory: directory, reuseFor: fresh)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -182,7 +190,52 @@ public actor AnimeIDBridge: MetadataProvider {
         try Task.checkCancellation()
         guard revision == generation else { throw CancellationError() }
         if loaded, let expires, expires > .now { return }
-        index(try JSONDecoder().decode([LossyEntry].self, from: data).compactMap(\.entry))
+        do {
+            index(try JSONDecoder().decode([LossyEntry].self, from: data).compactMap(\.entry))
+        } catch {
+            // Never keep a list that does not parse.
+            if let directory { try? FileManager.default.removeItem(at: directory) }
+            await downloads.remove("bridge")
+            throw error
+        }
+        await downloads.remove("bridge")
+    }
+
+    /// The list, from disk when it is younger than `reuseFor`, else revalidated
+    /// against the saved ETag: a 304 reuses the file.
+    static func download(_ transport: HTTP.Transport, directory: URL?, reuseFor lifetime: Duration?) async throws -> Data {
+        let file = directory?.appending(path: "anime-list-full.json")
+        let tag = directory?.appending(path: "anime-list-full.etag")
+        let saved = file.flatMap { try? Data(contentsOf: $0) }
+        if let file, let saved, let lifetime,
+           let modified = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+           modified.addingTimeInterval(TimeInterval(lifetime.components.seconds)) > .now {
+            return saved
+        }
+        var request = URLRequest(url: listURL, cachePolicy: .reloadIgnoringLocalCacheData)
+        if saved != nil, let etag = tag.flatMap({ try? String(contentsOf: $0, encoding: .utf8) }) {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        let (data, response) = try await transport(request)
+        let http = response as? HTTPURLResponse
+        if http?.statusCode == 304, let file, let saved {
+            Log.bridge.debug("list unchanged, reusing the saved copy")
+            try? FileManager.default.setAttributes([.modificationDate: Date.now], ofItemAtPath: file.path)
+            return saved
+        }
+        if let http, !(200..<300).contains(http.statusCode) {
+            throw SlateError.http(status: http.statusCode, body: "")
+        }
+        if let directory, let file, let tag {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+            if let etag = http?.value(forHTTPHeaderField: "ETag") {
+                try? etag.write(to: tag, atomically: true, encoding: .utf8)
+            } else {
+                try? FileManager.default.removeItem(at: tag)
+            }
+        }
+        return data
     }
 
     func index(_ entries: [Entry]) {

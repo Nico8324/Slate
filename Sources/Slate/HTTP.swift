@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import os
 
@@ -59,7 +60,9 @@ actor RateLimiter {
     }
 }
 
-/// Bounded, expiring responses and one shared fetch per request key.
+/// Bounded, expiring responses and one shared fetch per request key, backed by
+/// files in `directory` so they outlive the process. Files are named by the
+/// SHA-256 of the key (keys carry credentials) and expire at modification date + TTL.
 actor ResponseCache {
     private var entries: [String: (data: Data, expires: ContinuousClock.Instant)] = [:]
     private var order: [String] = []
@@ -76,15 +79,49 @@ actor ResponseCache {
     }
     private var flights: [String: Flight] = [:]
     var waiterCount: Int { flights.values.reduce(0) { $0 + $1.waiters.count } }
+    private let directory: URL?
+    private var seconds: TimeInterval { TimeInterval(lifetime.components.seconds) }
 
-    init(limit: Int = 256, ttl: TimeInterval = 3600, byteLimit: Int = 32 * 1024 * 1024) {
+    init(limit: Int = 256, ttl: TimeInterval = 3600, byteLimit: Int = 32 * 1024 * 1024, directory: URL? = nil) {
         self.limit = max(0, limit)
         self.byteLimit = max(0, byteLimit)
         lifetime = .seconds(ttl.isFinite ? min(max(0, ttl), 31_536_000) : 3600)
+        self.directory = directory
+        guard let directory else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Expired files are otherwise only dropped when read again.
+        let cutoff = Date(timeIntervalSinceNow: -TimeInterval(lifetime.components.seconds))
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for file in files where Self.modified(file) ?? .distantPast < cutoff {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    /// Where a provider's responses are kept between launches.
+    static func directory(for provider: Provider) -> URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appending(path: "Slate/\(provider.rawValue)", directoryHint: .isDirectory)
+    }
+
+    private static func modified(_ file: URL) -> Date? {
+        try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    private func file(for key: String) -> URL? {
+        directory?.appending(path: SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined())
     }
 
     func data(for key: String) -> Data? {
-        guard let entry = entries[key] else { return nil }
+        guard let entry = entries[key] else {
+            guard let file = file(for: key), let modified = Self.modified(file) else { return nil }
+            guard modified.addingTimeInterval(seconds) > .now, let data = try? Data(contentsOf: file) else {
+                try? FileManager.default.removeItem(at: file)
+                return nil
+            }
+            remember(data, for: key, expires: .now.advanced(by: .seconds(modified.addingTimeInterval(seconds).timeIntervalSinceNow)))
+            return data
+        }
         guard entry.expires > .now else {
             bytes -= entry.data.count
             entries[key] = nil
@@ -104,7 +141,13 @@ actor ResponseCache {
         // "Zero disables retention" — storing an entry already expired still
         // held the body in memory until something evicted it.
         guard lifetime > .zero, data.count <= byteLimit else { return }
-        if let previous = entries.updateValue((data, .now.advanced(by: lifetime)), forKey: key) {
+        if let file = file(for: key) { try? data.write(to: file, options: .atomic) }
+        remember(data, for: key, expires: .now.advanced(by: lifetime))
+    }
+
+    private func remember(_ data: Data, for key: String, expires: ContinuousClock.Instant) {
+        guard data.count <= byteLimit else { return }
+        if let previous = entries.updateValue((data, expires), forKey: key) {
             bytes -= previous.data.count
         } else {
             order.append(key)
@@ -158,8 +201,22 @@ actor ResponseCache {
         }
     }
 
+    /// Drops one entry, from memory and disk.
+    func remove(_ key: String) {
+        if let entry = entries.removeValue(forKey: key) {
+            bytes -= entry.data.count
+            order.removeAll { $0 == key }
+        }
+        if let file = file(for: key) { try? FileManager.default.removeItem(at: file) }
+    }
+
     /// Invalidated requests cannot repopulate the cache, even if transport ignores cancellation.
     func removeAll() {
+        if let directory {
+            for file in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
         entries.removeAll()
         order.removeAll()
         bytes = 0
@@ -175,7 +232,9 @@ actor ResponseCache {
 /// The smallest thing that can fetch and decode JSON, plus the two things every
 /// caller would otherwise have to reinvent: pacing and retries.
 struct HTTP: Sendable {
-    var session: URLSession = .shared
+    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    /// Sends one request; tests inject their own.
+    var transport: Transport = { try await URLSession.shared.data(for: $0) }
     var limiter: RateLimiter?
     var cache: ResponseCache?
     /// Total tries, not retries. Three is enough for a transient 429 or a 502
@@ -208,15 +267,25 @@ struct HTTP: Sendable {
         let prepared = request
         let data: Data
         if let cache {
-            data = try await cache.data(for: key) { try await fetch(type, request: prepared) }
+            data = try await cache.data(for: key) { try await fetch(prepared) }
         } else {
-            data = try await fetch(type, request: prepared)
+            data = try await fetch(prepared)
         }
         try Task.checkCancellation()
-        return try JSONDecoder().decode(type, from: data)
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            // A 200 whose shape changed. Says which type failed, never the body, and
+            // evicts it: a body that does not parse is not an answer worth keeping.
+            Log.http.error(
+                "\(Log.redactingQuery(url), privacy: .public) — \(String(describing: Response.self), privacy: .public) did not decode: \(Log.describe(error), privacy: .public)"
+            )
+            await cache?.remove(key)
+            throw error
+        }
     }
 
-    private func fetch<Response: Decodable & SendableMetatype>(_ type: Response.Type, request: URLRequest) async throws -> Data {
+    private func fetch(_ request: URLRequest) async throws -> Data {
         let endpoint = Log.redactingQuery(request.url!)
         let method = request.httpMethod ?? "GET"
         var lastRetryAfter: TimeInterval?
@@ -234,7 +303,7 @@ struct HTTP: Sendable {
             try Task.checkCancellation()
             let data: Data, response: URLResponse
             do {
-                (data, response) = try await session.data(for: request)
+                (data, response) = try await transport(request)
             } catch let error as URLError where Self.isTransient(error) && attempt < attempts {
                 // A dropped connection is the network's hiccup, not the provider's
                 // answer; only 429 and 5xx were being retried.
@@ -244,11 +313,7 @@ struct HTTP: Sendable {
                 try await Task.sleep(for: .seconds(Self.backoff(attempt)))
                 continue
             }
-            guard let http = response as? HTTPURLResponse else {
-                Log.http.debug("\(endpoint, privacy: .public) — no HTTP response, decoding anyway")
-                _ = try JSONDecoder().decode(Response.self, from: data)
-                return data
-            }
+            guard let http = response as? HTTPURLResponse else { return data }
 
             if http.statusCode == 429 || (500..<600).contains(http.statusCode) {
                 let retryAfter = Self.retryAfter(http)
@@ -288,23 +353,9 @@ struct HTTP: Sendable {
                 throw SlateError.http(status: http.statusCode,
                                       body: String(decoding: data.prefix(512), as: UTF8.self))
             }
-            do {
-                _ = try JSONDecoder().decode(Response.self, from: data)
-            } catch {
-                // The failure a caller cannot diagnose from the outside: a 200
-                // whose shape changed. Says which type failed to decode, never
-                // the body — that is the provider's payload about a title.
-                Log.http.error(
-                    "\(endpoint, privacy: .public) — HTTP 200 but \(String(describing: Response.self), privacy: .public) did not decode: \(Log.describe(error), privacy: .public)"
-                )
-                throw error
-            }
             Log.http.debug(
                 "\(endpoint, privacy: .public) — \(http.statusCode, privacy: .public), \(data.count, privacy: .public) bytes in \(started.duration(to: .now).milliseconds, privacy: .public)ms"
             )
-            // Stored only after decoding: a body that does not parse is not an
-            // answer, and caching it would repeat the failure without the round
-            // trip that might have fixed it.
             return data
         }
         // Rate limited only if that is what the last answer was. A server failing with 5xx on

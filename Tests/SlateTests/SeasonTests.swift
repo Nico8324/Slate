@@ -365,7 +365,7 @@ struct SeasonCacheTests {
     /// SeasonStructure — every episode of every season — per show, for the life
     /// of the provider. A library scan is thousands of shows.
     @Test func theOldestShowsFallOutFirst() async {
-        let provider = TMDBProvider(accessToken: "t")
+        let provider = TMDBProvider(accessToken: "t", transport: Stub().transport)
         let plain = SeasonStructure(nativeSeasons: [Season(number: 1, episodeCount: 12)], provider: .tmdb)
 
         for showID in 1...300 { await provider.rememberSeasons(plain, for: showID) }
@@ -379,11 +379,78 @@ struct SeasonCacheTests {
     /// Re-asking about a show already cached must not add a second order entry,
     /// or the cache would evict live shows while short of its limit.
     @Test func reRememberingAShowDoesNotGrowTheOrder() async {
-        let provider = TMDBProvider(accessToken: "t")
+        let provider = TMDBProvider(accessToken: "t", transport: Stub().transport)
         for _ in 1...500 { await provider.rememberSeasons(nil, for: 7) }
 
         let cache = await provider.seasonCache
         #expect(cache.count == 1)
         #expect(cache[7] != nil)
+    }
+}
+
+struct SeasonRequestTests {
+    let stub = Stub()
+
+    private func tmdb(language: String = "en-US") -> TMDBProvider {
+        TMDBProvider(accessToken: "t", language: language, transport: stub.transport)
+    }
+
+    @Test func aFilmHasNoSeasonsAndNoRequestIsMade() async throws {
+        #expect(try await tmdb().seasons(for: Identifiers(tmdb: 603), kind: .movie) == nil)
+        #expect(stub.requested.isEmpty)
+    }
+
+    @Test func aFallbackAfterAFailedRequestIsNotCached() async throws {
+        stub.stub("/tv/1", json: #"{"id":1,"seasons":[{"season_number":1,"episode_count":366}]}"#)
+        stub.stub("/tv/1/episode_groups", .init(status: 404, body: "{}"))
+        let provider = tmdb()
+        let first = try await provider.seasons(for: Identifiers(tmdb: 1))
+        #expect(first?.ordering == .native)
+        let groupRequests = stub.requested.filter { $0.path.hasSuffix("/episode_groups") }.count
+        _ = try await provider.seasons(for: Identifiers(tmdb: 1))
+        #expect(stub.requested.filter { $0.path.hasSuffix("/episode_groups") }.count > groupRequests,
+                "asked again rather than serving the fallback for the cache's lifetime")
+    }
+
+    @Test func episodesCarryTheirRunningTime() async throws {
+        stub.stub("/tv/1/season/1", json: """
+        {"episodes":[{"episode_number":1,"runtime":65},{"episode_number":2,"runtime":0}]}
+        """)
+        let episodes = try await tmdb().episodes(ofShow: 1, nativeSeason: 1)
+        #expect(episodes.map(\.runtimeMinutes) == [65, nil])
+    }
+
+    @Test func twoSpecialsGroupsBecomeOneSeasonZero() {
+        typealias Payload = TMDBProvider.EpisodeGroupPayload
+        func item(_ season: Int, _ episode: Int) -> Payload.Entry.Item {
+            .init(id: nil, name: nil, air_date: nil, season_number: season, episode_number: episode)
+        }
+        let seasons = TMDBProvider.seasons(from: Payload(id: "g", name: "g", groups: [
+            .init(order: 0, name: "Specials", episodes: [item(0, 1), item(0, 2)]),
+            .init(order: 1, name: "Arc", episodes: [item(1, 1)]),
+            .init(order: 2, name: "OVAs", episodes: [item(0, 3)]),
+        ]))
+        #expect(seasons.map(\.number) == [0, 1])
+        #expect(seasons.first?.episodes?.map(\.number) == [1, 2, 3])
+        #expect(seasons.first?.episodes?.last?.native == EpisodePosition(season: 0, episode: 3))
+    }
+
+    @Test func inflatedGroupCountsDoNotHideMissingEpisodes() async throws {
+        stub.stub("/tv/1", json: #"{"seasons":[{"season_number":1,"episode_count":60}]}"#)
+        stub.stub("/tv/1/episode_groups", json: """
+        {"results":[{"id":"g","name":"TVDB Order","type":1,"group_count":2,"episode_count":60}]}
+        """)
+        // Sixty rows, but episode 30 occurs twice and episode 60 is absent.
+        let groups = [Array(1...30), Array(30...59)].enumerated().map { index, numbers in
+            let episodes = numbers.map {
+                "{\"season_number\":1,\"episode_number\":\($0)}"
+            }.joined(separator: ",")
+            return "{\"order\":\(index),\"name\":\"Arc\",\"episodes\":[\(episodes)]}"
+        }.joined(separator: ",")
+        stub.stub("/tv/episode_group/g", json: "{\"id\":\"g\",\"name\":\"TVDB Order\",\"groups\":[\(groups)]}")
+        let provider = TMDBProvider(accessToken: "t", transport: stub.transport)
+        let result = try await provider.seasons(for: Identifiers(tmdb: 1))
+        #expect(result?.ordering == .native)
+        #expect(result?.position(ofAbsolute: 60) == EpisodePosition(season: 1, episode: 60))
     }
 }

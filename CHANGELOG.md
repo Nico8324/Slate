@@ -6,1177 +6,165 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-09-24
+
+- Responses persist on disk across launches (`Caches/Slate/<provider>/`, SHA-256 file names,
+  TTL from the file date); the anime bridge list is kept on disk and revalidated with ETag.
+- Details carry card art (`Snapshot.artwork`, `TitleMetadata.artwork`: viewer's language,
+  English and textless), `Snapshot.genreIDs` and `Snapshot.translatedTitles`; `Candidate.popularity`.
+- `TMDBProvider.candidate(for:kind:)`: a light lookup by IMDb or TMDB id.
+- `TMDBProvider.candidates(correcting:kind:)` and `searchPeople(correcting:)`: spelling-corrected search.
+- `Trailer` and `Rating` are `Codable`; `[Trailer].best(version:originalLanguage:viewer:)` picks
+  the original, subtitled or dubbed trailer.
+- Removed: `ArtworkProvider`, `MetadataAggregator.seasons(for:kind:)` and
+  `.artwork(for:kind:nativeSeason:)` — call `TMDBProvider.seasons` / `.artwork` directly.
+  AniList's `artwork(for:)` is gone.
+- `FieldKey` gains `.artwork`: a `switch` over it with no `default` stops compiling.
+- AniList's filtered search pages at most 3 pages, like the unfiltered one.
+
 ## [0.19.0] — 2026-09-23
 
-### Changed
-
-- `FieldKey` gains `.nextEpisode` and `.homeReleaseDate`: a `switch` over it with no
-  `default` needs the two cases. `nextEpisode` comes from TMDB alone, while
-  `nextEpisodeAirDate` prefers AniList for anime, so their `best` values can come from
-  different providers.
-- `TMDBProvider.upcoming(_:after:calendar:page:)` counts "today" in the viewer's calendar.
-- A show's seasons are read from its details request, which the cache usually already holds,
-  rather than from a second `/tv/{id}` request.
-- The response cache drops the least recently *used* entry, not the least recently fetched,
-  and TMDB's holds 1,024 responses or 128 MB: a busy hour no longer pushes out the titles
-  being looked at.
-
-### Added
-
-- `TMDBProvider.genres(of:)` and `TMDBProvider.titles(inGenre:kind:page:)`: TMDB's genres
-  for films or shows, and a genre's titles page by page, most popular first among titles
-  with at least 50 votes.
-- `TMDBProvider.upcoming(_:after:page:)`: announced films, or new shows, not out yet, most
-  awaited first, as far ahead as TMDB has dates.
-- `Candidate.releaseDate`, `backdropURL`, `originalLanguage` and `genreIDs`, from TMDB's
-  searches and lists; AniList's charts give their start date too.
-- `Candidate.releasePrecision` and `DatePrecision`: an announcement dated only "October 2027"
-  or "2027" says so, rather than passing for the first of the month.
-- `homeReleaseDate` on snapshots and `TitleMetadata`: a film's first digital release, the
-  region's own when it has one — when it can be watched at home rather than in cinemas.
-- `nextEpisode` on snapshots and `TitleMetadata`: which episode airs next, a new season when
-  it's episode 1.
+- `TMDBProvider.genres(of:)`, `titles(inGenre:kind:page:)` and `upcoming(_:after:calendar:page:)`.
+- `Candidate` gains `releaseDate`, `releasePrecision` (`DatePrecision`), `backdropURL`,
+  `originalLanguage` and `genreIDs`; snapshots gain `homeReleaseDate` and `nextEpisode`
+  (new `FieldKey` cases).
+- Seasons read from the cached details request; the response cache evicts least recently used.
 
 ## [0.18.0] — 2026-09-23
 
-### Added
-
-- `Person.popularity`, from `TMDBProvider.searchPeople(_:)`: TMDB lists everyone who shares
-  a name, and the score is what tells the person meant from their namesakes.
+- `Person.popularity`, to tell a person from their namesakes.
 
 ## [0.17.0] — 2026-09-23
 
-### Added
-
-- `TMDBProvider.collection(id:)`: the films of a franchise, in release order.
+- `TMDBProvider.collection(id:)`: a franchise's films in release order.
 
 ## [0.16.0] — 2026-09-23
 
-### Added
-
-- **Anime charts.** `AniListProvider.titles(in:kind:page:perPage:now:)` — trending,
-  popular, this season, top rated and upcoming, for series or films, ranked by AniList.
-  `AniListChart`.
-- `AnimeIDBridge.broadcastIDs(ofAniList:kind:)`: an AniList work's IMDb and TMDB ids,
-  and the TMDB season it is — the direction `snapshot(for:)` does not go. A bare
-  `themoviedb_id`, which doesn't say film or show, is only used for a show; a film
-  goes by its IMDb id.
-
-### Fixed
-
-- `TMDBProvider.resized(_:toFit:)` replaces any size in a TMDB image URL, not only
-  `original`: MDBList's `w200` posters stayed 200 pixels wide however large they were
-  drawn. Past the largest rendered width it returns `original`.
+- Anime charts: `AniListProvider.titles(in:kind:page:perPage:now:)`, `AniListChart`.
+- `AnimeIDBridge.broadcastIDs(ofAniList:kind:)`: an AniList work's IMDb/TMDB ids and TMDB season.
+- `TMDBProvider.resized(_:toFit:)` replaces any size in the URL, not only `original`.
 
 ## [0.15.0] — 2026-09-23
 
-### Added
-
-- **Charts through MDBList.** `MDBListProvider.titles(in:kind:limit:cursor:)` returns a
-  page of an official list — trending, popular, most watched, anticipated, IMDb's
-  MOVIEmeter, streaming charts — ranked, with ids and posters. `OfficialList`, `ListPage`.
-
-### Fixed
-
-- MDBList never worked with a real API key: Slate sent it as `Authorization: Bearer`,
-  which MDBList reserves for OAuth tokens and answers with 401. It now travels as
-  `?apikey=`, the only form MDBList accepts for a key. Query strings never reach
-  Slate's logs.
-
-### Removed
-
-- `TraktProvider`, `TraktList`, `TraktPeriod` and `Provider.trakt`. New Trakt API apps
-  need a paid account; MDBList serves the same rankings on the key its ratings use.
+- Charts through MDBList: `MDBListProvider.titles(in:kind:limit:cursor:)`, `OfficialList`, `ListPage`.
+- MDBList's key travels as `?apikey=`, the only form it accepts.
+- Removed `TraktProvider` and `Provider.trakt`.
 
 ## [0.14.0] — 2026-09-23
 
-### Added
-
-- **Crew.** `crew` carries a film's directors and writers and a show's creators, from
-  the credits the details request already fetched. `CrewMember.id` is person + job.
-- **Every trailer.** `trailers` lists each YouTube video with its kind, language,
-  region, official flag and date; `[Trailer].best(preferring:)` ranks them — trailer
-  over teaser, the preferred languages in order, official, then newest.
-- **Recommendations.** `recommendations` rides on the same details request.
-- **Episode running times.** `Episode.runtimeMinutes`, from TMDB's season pages.
-- **Image sizes.** `TMDBProvider.resized(_:toFit:)` returns a TMDB image at the
-  smallest rendered width that fits, instead of the multi-megabyte `original`.
-- **Trakt lists.** `TraktProvider.titles(in:)` — trending, popular, anticipated,
-  box office and most watched, ranked by viewing rather than TMDB's page-view
-  popularity. Lists only; rows carry IMDb and TMDB ids. New `Provider.trakt`.
-- `seasons(for:kind:)` on the aggregator and on `TMDBProvider`.
-- `Slate.xcodeproj`, a shared library/test scheme, and `project.yml` for regeneration.
-- Configurable `cacheTTL` and `clearCache()` on built-in providers. Metadata and
-  season structures expire after one hour by default; the anime bridge after 24 hours.
-
-### Changed
-
-- `trailerYouTubeID` is the **original-version** trailer: the details request now asks
-  for the lookup language, English and untagged videos (`include_video_language`), and
-  a title made in a third language fetches its own-language videos in one extra
-  request. Before, a French lookup saw only French videos and a language with none got
-  no trailer at all.
-- `cast` lists each person once, their roles joined (`Twin A / Twin B`), so
-  `CastMember.id` is unique.
-- A TMDB id with no kind, no IMDb id and no name throws `SlateError.invalidLookup`
-  instead of returning `nil`.
-- TMDB searches with a year and no kind run `/search/movie` and `/search/tv`, filtered
-  on the server, instead of paging `/search/multi` and filtering on the client — two
-  requests instead of up to 500.
-- AniList asks for 25 results per page and stops after 3 pages when unfiltered, 20 when
-  filtered by year or kind (was 5 per page, up to 100 pages).
-- `Candidate.id` falls back to the IMDb id when there is no TMDB id.
-- Updated README usage examples, DocC/API documentation, and the review checklist
-  for cache lifetimes, cancellation, matching, validation, and Xcode workflows.
-
-### Fixed
-
-- `seasons(for:)` no longer reads a film's TMDB id as a show's — TMDB numbers the two
-  separately, so it fetched an unrelated show's seasons and cached them.
-- A season structure that fell back to TMDB's own seasons because a request failed is
-  no longer cached: one 429 kept Bleach at one season of 366 for the cache's lifetime.
-- Two specials groups in an episode group become one season 0 numbered straight
-  through; both used to be season 0, and the second's episodes mapped onto the first's.
-- A title with no votes has no TMDB score, instead of 0.0 — also for episodes.
-- AniList partial start dates (`{year: 2027}`) are no date rather than January 1st,
-  which outranked TMDB's real date.
-- Answers are checked for conflicts against the ids the caller passed, not ids other
-  providers supplied mid-lookup; disagreements between those are settled by priority.
-- A loose name match loses a film-or-show conflict with a precise one, whatever the
-  priority: "Love" matched *Love Live!* on AniList and discarded TMDB's film.
-- Images with neither a language nor a rating rank after every described image, so
-  AniList's banner strip no longer wins the backdrop over TMDB's.
-- Timeouts and dropped connections are retried like 429 and 5xx.
-- The response cache has a byte budget (32 MB) as well as an entry count, and a
-  lifetime of zero stores nothing.
-- A failed refresh of the anime id bridge keeps the previous index instead of failing
-  every lookup.
-- `candidates(for:)`'s documentation was attached to `lastPage`.
-- Concurrent identical requests share a fetch with independent waiter cancellation.
-  Invalidation cancels pending work and prevents stale responses or season structures
-  from repopulating caches after settings changes. Credentials distinguish cache entries.
-- Filtered searches continue onto subsequent result pages. AniList request JSON uses
-  stable key ordering, and GraphQL errors are reported rather than cached as no match.
-- Aggregation excludes conflicting IDs or media kinds and reports rejected providers
-  in `failures`. Cancellation stops enrichment rounds and bridge waits.
-- Invalid IDs, dates, negative episode counts, blank metadata, and invalid scalar scores
-  are rejected or omitted at the relevant lookup and payload boundaries.
-- TMDB mixed searches honor the requested release year; AniList searches honor
-  year and kind, while exact AniList IDs take precedence over search hints.
-- Empty translation entries no longer prevent the English synopsis fallback.
-- Equal-priority providers use a stable identifier order for metadata and artwork.
-- Name-only lookups skip downloading the anime ID bridge until a broadcast ID is known.
-- Episode-group corrections must actually cover every native episode, rather than
-  relying only on the summary count, which can include duplicates or be stale.
-- Requests already queued for a rate-limit turn now honor pauses received while
-  waiting. Cancellation stops pacing and retry waits, including cached lookups.
-- Non-finite `Retry-After` values are ignored instead of becoming invalid sleep durations.
-- The search term no longer reaches the log, or `TitleMetadata.failures`, by
-  way of a `URLError`. `String(describing:)` of one embeds
-  `NSErrorFailingURLKey` — the whole request URL, query string included — so
-  any transport failure on a TMDB search (offline, DNS, timeout: the ordinary
-  case on a phone) wrote what the person typed into the system log at
-  `.public`, inside a string that reads like an opaque diagnostic. `failures`
-  keeps Slate's own errors verbatim, body and all, and reduces every foreign
-  one to its kind.
-- Errors in log lines say what kind of failure it was and no more. `SlateError.http`
-  carries the first 512 bytes of the response body — right for a caller holding
-  the error, wrong for the system log, where a provider echoing the query back
-  in an error message would have written what someone searched for at
-  `.public`. `HTTP` never logged a body for that reason; the aggregator then
-  logged the whole error, which is the one path around that care. `Log.describe(_:)`
-  now reduces an error to its kind, keeping a `DecodingError`'s coding path
-  because that is about the payload's shape rather than the title.
-  `TitleMetadata.failures` is unchanged — it is a value, not a log line.
+- Added crew, every trailer with `[Trailer].best(preferring:)`, recommendations, episode
+  running times, `TMDBProvider.resized(_:toFit:)`, `seasons(for:kind:)`, configurable
+  `cacheTTL` and `clearCache()`, and the Xcode project.
+- `trailerYouTubeID` is the original-version trailer; cast lists each person once.
+- Many correctness fixes: season caching, conflicts, retries, cache budgets, logging privacy.
 
 ## [0.13.0] — 2026-09-20
 
-### Fixed
-
-- `position(ofAbsolute:)` no longer falls through to the reading it rejects.
-  Under an episode-group ordering it walked the provider's seasons and, when
-  the number did not map, carried on into the group's own seasons — the walk
-  the method's own reasoning rules out, off by one wherever a group holds a
-  special or lists a recap twice. An unmapped number is now unmapped, which is
-  what every other unaccounted-for case in `SeasonStructure` answers.
-- `AnimeIDBridge.index(_:)` replaces rather than appends. Appending made a
-  second indexing pass fatal instead of merely wasteful: every id would hold
-  two candidates, `entry(for:)` refuses to choose between two, and the bridge
-  went silent for everything while looking like a provider that knew nothing.
-  Cheaper to make the second pass harmless than to prove it unreachable.
-- AniList no longer answers `ja`/`JP` for everything. `type: ANIME` covers
-  Chinese donghua and Korean aeni, and the country was hardcoded — so
-  "Mo Dao Zu Shi" came back Japanese, as a fact carrying AniList's name.
-  `countryOfOrigin` is asked for and mapped; silence where AniList does not say.
-- A search with no `kind` — the path `Lookup(search:)` takes — runs through the
-  same exact-title-then-popularity rule as a typed one. It was still taking
-  TMDB's first result, which is 1999's Hunter x Hunter ahead of 2011's: the
-  rule was absent from the path the documentation calls the safer default.
-- Film searches narrow by `primary_release_year` rather than `year`. `year`
-  matches *any* release date a film carries, so a re-release or a regional
-  reissue answered for a year the film was not made in.
-- Poster and backdrop URLs go through the percent-encoding helper the rest of
-  the file uses. They were interpolated raw, and these paths are provider JSON.
-- Published lists are scoped to the provider's `region`. TMDB computes
-  "now playing" and "upcoming" as release-date windows *per country*, and
-  unscoped they mean "released somewhere on earth" — which is how a
-  restoration re-released in one territory turned up among this week's films.
-  Search stays unscoped: a title someone typed should be findable wherever it
-  came out.
-- The response cache keys POST bodies by the body itself rather than by
-  `hashValue`. A collision would have returned another query's JSON with
-  nothing downstream able to tell.
-- A 429 no longer waits twice. The failed attempt paused the shared rate
-  limiter until the server's instant *and* slept locally for the same span,
-  so every retry behind a limiter served the wait through twice over.
-
-### Added
-
-- TMDB and AniList contribute to `ratings`, each with the vote count behind the
-  score — 10.0 from three voters and 8.4 from thirty thousand were previously
-  the same claim, since only the bare `rating` Double was filled and TMDB's
-  `vote_count` was not even decoded. AniList's count is the summed score
-  distribution, not `popularity`, which counts everyone who listed it.
-- A test asserting every `FieldKey` is populated by `assemble`. Adding a field
-  means touching four places and the compiler enforces three of them; the
-  fourth was silently skippable.
-- `README` documents what `region` actually governs, and that reading
-  `Locale.current` is the app's job, not the package's.
-- Films report `originCountries`. `origin_country` is a television-only field,
-  so the whole field silently meant "series only" and an anime *film* could
-  never satisfy a JP-plus-animation heuristic; `production_countries` is the
-  film equivalent.
-
-### Removed
-
-- `ArtworkKind.still`. Nothing produced it, and `ArtworkSet.all(.still)`
-  returned the backdrops — so asking for episode frames handed back something
-  else entirely. Frames come from `Episode.stillURL`, where they always did.
-  A source break for anything switching over the enum, which is the honest
-  signal that the case answered nothing.
-
-### Changed
-
-- The season cache is bounded, oldest out first, as `ResponseCache` already
-  was. It was the one cache in the package with no ceiling, holding a full
-  `SeasonStructure` per show for the life of the provider.
-- `find`, `movieID(for:)` and `showID(for:)` share one `/find/` request helper
-  instead of spelling the same request three times.
-- `ratings` has its own field priority, MDBList first. It answers with IMDb,
-  Metacritic, the tomatometer, Letterboxd and MyAnimeList at once, and under
-  the general order TMDB's new one-entry list would have won a field whose
-  whole point is breadth. The same kind of correction as `episodeCount`.
-- `String.asReleaseDate` uses two formatters built once instead of
-  constructing a `DateFormatter` per call — it runs for every date of every
-  snapshot of every provider.
+- TMDB and AniList contribute `ratings` with vote counts; films report `originCountries`.
+- Fixes to absolute-number mapping, bridge re-indexing, AniList country, untyped search
+  ranking, film-year search and region-scoped lists. Removed `ArtworkKind.still`.
 
 ## [0.12.1] — 2026-09-19
 
-### Fixed
-
-- **A page past TMDB's last (500) is empty rather than an error**, for `candidates(for:)`,
-  `titles(in:)` and `searchPeople(_:)` — an infinite scroll used to end on a thrown request.
-  `TMDBProvider.lastPage` names the limit.
+- A page past TMDB's last (500) is empty rather than an error; `TMDBProvider.lastPage`.
 
 ## [0.12.0] — 2026-09-19
 
-### Fixed
-
-- **MDBList scores on the right scale.** A site's own 0–100 `score` decides the value where
-  MDBList gives one; the fallback table now knows Trakt, TMDB and Popcornmeter (percentages),
-  Roger Ebert (out of 4) and Metacritic users (out of 10). Trakt's 85 had come out as 85 out of 10,
-  and Metacritic users' 8.9 as 0.89.
-- **`seasons(for:)` says why it failed.** A rejected token, a rate limit or a decode failure is
-  logged as an error rather than read as "no season structure".
-- **A server failing with 5xx on every attempt throws `.http`**, not `.rateLimited` — the case
-  documented as "slow down" rather than "this will never work".
-- **A 429 pauses every request through the same provider**, not only the one that received it, and
-  `Retry-After` is read in its HTTP-date form too and honoured up to 60 s (AniList's window) rather
-  than 30.
-- **Later lookup rounds carry the kind earlier rounds learned**, so MDBList is asked
-  `/tmdb/movie/…` or `/tmdb/show/…` rather than `/tmdb/any/…` for an id that names both.
-- **A key the provider rejects (401/403) is `.missingCredential`**, as the case is documented.
-- **`ArtworkSet.best(_:preferring:)` matches a locale to its language**, so `en-US` prefers `en`
-  images instead of ranking them below textless ones.
-- **A failed episode-group request keeps TMDB's own seasons**: one null in a community group or a
-  429 on `/episode_groups` used to make `seasons(for:)` nil for that show on every lookup.
-- **`position(ofAbsolute:)` reads a corrected show through TMDB's own numbering**, as the rest of
-  the structure does, so a group holding a special or a doubled recap no longer files an absolute
-  number one episode off.
-- **`nativeRange(ofSeason:)` refuses a range with a repeated episode**, which passed as complete
-  while missing one.
-- **Episode groups are numbered 1, 2, 3… in order**, with season 0 only for a group of TMDB
-  specials — a first arc ordered 0 was filed as specials, and two groups sharing an order shared an id.
-- **Season and arc names come back in the provider's language** (`language` on `/tv/{id}` and the
-  episode-group requests).
-- **The anime id map keeps TMDB film and show ids apart**, decodes row by row so one bad row no
-  longer disables it, and narrows a shared id by TMDB's season number before TheTVDB's.
-- **A filmography lists each title once**, not once per crew job, and **`Candidate.id` includes the
-  kind**, so a film and a show sharing a TMDB number no longer collide.
-
-### Added
-
-- `SeasonStructure.absoluteRange(ofSeason:)` — a shown season's absolute episode numbers. Use it
-  instead of `nativeRange(ofSeason:)?.episodes` when asking an indexer: those restart in each of
-  the provider's seasons.
+- MDBList scores on the right scale; 401/403 is `.missingCredential`; 429 pauses the provider.
+- Season and episode-group fixes; `SeasonStructure.absoluteRange(ofSeason:)`.
 
 ## [0.11.0] — 2026-09-11
 
-Logging, everywhere a decision is made. **Minor rather than patch**: no
-signature moved, but a package that wrote nothing to the unified log now writes
-to it on every lookup, and that is a behaviour change a consumer should adopt
-deliberately.
-
-### Added
-
-- **`Log`** — one file holding every logger and, more to the point, deciding the
-  privacy rules once. Subsystem `Slate`, one category per area: `HTTP`,
-  `Aggregator`, `TMDB`, `AniList`, `MDBList`, `AnimeIDBridge`, `Seasons`,
-  `Artwork`.
-- **Every silent `nil` now says why it was nil.** That is the whole point. This
-  package returns `nil` rather than guessing in a dozen places — an unmatched
-  title, an ambiguous broadcast id, an episode group rejected for not breaking
-  up the run, a provider with no id to resolve by yet — and from outside all of
-  them looked identical. 0.10.0's concurrency bug reached a consumer as *romaji
-  ordering is broken* for exactly this reason.
-- **`HTTP` logs every request**: method, endpoint, attempt number, status,
-  byte count, duration, cache hits, retries with the wait it is about to take,
-  and the failure that was previously invisible — a 200 whose body did not
-  decode, naming the type that failed.
-- **The season chain narrates its decisions**, which are the most consequential
-  in the package: whether a show looks flattened and by what margin, which
-  episode group was chosen and why, and each rejection — a group that divides
-  into nothing, or one that leaves the long run standing (the Hunter x Hunter
-  `Complete Series` trap).
-- **The aggregator logs one summary line per lookup**: who answered, who failed,
-  and who was in the provider list and matched nothing. Plus an `error` when
-  ``MetadataAggregator/seasons(for:)`` is called with no `TMDBProvider` present,
-  or ``MetadataAggregator/artwork(for:kind:nativeSeason:)`` with nothing
-  artwork-capable — the inert-wiring case that previously returned `nil` in
-  silence.
-
-### The privacy rule, and it is not a convention
-
-Catalogue ids, counts, byte totals, status codes and decisions are `.public` —
-numbers about *titles*. A search query or a title is `.private`, because what a
-person looks for is their library contents and a shipped app must not write it
-into the system log.
-
-**A credential is neither.** No log line in this package interpolates a token,
-a key or a header at any privacy level, and `HTTP` logs a URL's host and path
-with the query stripped — TMDB puts the search term in `?query=`, and MDBList's
-other spelling of authentication is `?apikey=`. `.private` redacts a line for a
-reader; it does not stop the string being built, which is not the distance to
-keep between a token and a log.
-
-A test enforces both halves: the redaction helper is asserted against a real
-search URL and a key-bearing one, and a grep-as-a-test fails the build if any
-log line in `Sources` interpolates `accessToken`, `apiKey`, `headers` or
-`Bearer`. It was verified by adding such a line and watching it fail.
+- `Log`: every silent `nil` says why, with a strict privacy rule (no credentials, no queries).
 
 ## [0.10.5] — 2026-09-08
 
-Documentation only. The end of the sweep — this pass was systematic rather than
-reactive: every DocC symbol link in the package checked against what is actually
-declared, and every counted claim recounted.
-
-### Fixed
-
-- **`artwork(for:)` carried the deleted batch method's documentation.** *"Results
-  come back in the order asked. Concurrency is bounded… three hundred titles
-  started at once"* described `metadata(for: [Lookup], maxConcurrent:)`, removed
-  in 0.5.0. It had been stranded for five releases on a method that takes a
-  single id, above an orphaned `///` where its own summary line used to be. The
-  method now documents itself.
-- **`AnimeIDBridge`'s type doc pointed at `identifiers(for:)`**, which does not
-  exist — the entry point is ``AnimeIDBridge/snapshot(for:)``. The sentence
-  explaining the package's most subtle refusal named a method a reader could not
-  find, and now also names ``Lookup/season`` as the way to narrow it.
-- **`FieldKey` has twenty-six cases, not thirteen.** The README argued for a
-  loop over *"thirteen hand-written branches"*. The count doubled across five
-  releases while the sentence stood still — which is the argument making itself,
-  so it now says so.
-- **``Provider/mdbList`` and ``Provider/fribb`` are absent from the default
-  ``priority``** and it looked like an oversight. It is not: the bridge supplies
-  no fields at all, and MDBList's ratings are a field nothing else answers, so
-  neither has an ordering to lose. Said on the property.
+- Documentation only: symbol links and counted claims checked.
 
 ## [0.10.4] — 2026-09-08
 
-Documentation only, continuing 0.10.3's sweep into the README and the DocC page.
-
-### Fixed
-
-- **`Field.dissent` does not exist and never did.** The README's feature table
-  told a reader to call it and the DocC page linked it — so the one affordance
-  the package's whole premise rests on, *the values that lost stay reachable*,
-  was advertised twice as a property that fails to compile. ``Field/candidates``
-  is the real one and lists every answer with the winner first. Documented as
-  that, rather than adding a property to make two sentences true: no API arrives
-  here on a guess about a caller, and there is no caller.
-- **Both worked examples showed a two-provider aggregator**, which is exactly
-  the impression that costs a consumer a day: ``AnimeIDBridge`` and
-  ``MDBListProvider`` are opt-in, in no default set, and a provider left out of
-  `providers` is never asked with nothing at all reporting its absence. Both
-  examples now say so where the reader is looking.
-- **The id-bridge section did not say it was opt-in** — it showed
-  `AnimeIDBridge()` standing alone, as though constructing it were the wiring.
-  It now shows it inside `MetadataAggregator(providers:)` and states the cost of
-  omitting it: an id-only lookup returns no romaji names, as though none
-  existed.
-- **`seasons(for:)` is TMDB-only** in the README and the DocC page too, not just
-  on the method.
-- **"No dependencies. `Foundation` and `URLSession`, nothing else"** stopped
-  being true when 0.10.2 added `os` for the bridge's log lines. Now says
-  `Foundation`, `URLSession` and `os`, and that there are no *package*
-  dependencies — which is the claim the badge makes and the one that matters.
+- Documentation only: README and DocC corrections.
 
 ## [0.10.3] — 2026-09-08
 
-Documentation only. No code changed, and every one of these was found by a
-consumer acting on what the docs said.
-
-### Fixed
-
-- **`Lookup(imdbID:kind:)` said the id bridge does not exist.** *"No id bridge to
-  it exists from IMDb"* was true until 0.8.0 and has been the opposite of true
-  since — and it is the sentence a consumer reads at the moment they are choosing
-  between the id path and the name path. It sent one to the name path months ago
-  and a whole name-walking helper was built partly because of it. Now says what
-  is actually true: AniList is reached from an id when ``AnimeIDBridge`` is
-  wired, and not when it isn't.
-- **`seasons(for:)` is TMDB-only and did not say so.** It filters ``providers``
-  to `TMDBProvider` by type, so every other provider in the list is skipped.
-  `MetadataAggregator(providers:)` reads as *these are the providers*, and a
-  method quietly consulting a subset of them is invisible until you read the
-  body — a consumer added the bridge to an aggregator whose only call site was
-  this one, and the wiring was inert with nothing to say so.
-- **The same doc claimed ``priority`` order**, which it has never used. There is
-  only one answer to prefer; the first `TMDBProvider` that returns a structure
-  wins.
-- **A dangling ``SeasonProvider`` link** in `ArtworkProvider`'s doc — a protocol
-  that does not exist and, judging by the sentence around it, never did.
+- Documentation only: the id bridge and TMDB-only seasons described correctly.
 
 ## [0.10.2] — 2026-09-08
 
-### Added
-
-- **The bridge says what it is doing.** Slate logs nothing anywhere else and
-  did not need to; `AnimeIDBridge` is the exception, because it is the one
-  provider with three separate ways to be silently unhelpful — it holds nothing
-  for an id, it holds several and refuses to choose, or its one large fetch
-  failed — and from outside all three are the same `nil`. It is also the only
-  large one-off download in the package, and a lazy one, so a consumer cannot
-  see it start, finish, or happen more than once.
-
-  That combination is what let 0.10.0's concurrency bug present to a consumer as
-  *romaji ordering is broken* rather than as *the bridge is downloading five
-  times*. One `Logger` line at each end of the load, and one on the
-  refuse-to-choose path — which also names `Lookup.season` as the way to narrow
-  it, since that refusal is the one the caller can actually fix.
-
-  `os.Logger`, so no dependency is added and the badge stays true. Counts, byte
-  totals and catalogue ids are logged `.public`: they are numbers about titles,
-  never about a person, and a refusal that will not say which id it refused
-  cannot be acted on.
+- `AnimeIDBridge` logs its load and its refusals.
 
 ## [0.10.1] — 2026-09-08
 
-### Fixed
-
-- **`AnimeIDBridge` fetched the list once per concurrent caller, and then
-  answered nothing.** `load()` guarded on a flag across an `await`: the
-  suspension releases the actor, so every caller that arrived during the
-  download passed the guard and started its own. Five concurrent lookups meant
-  five downloads of 7.5 MB — and because `index(_:)` appends, every entry was
-  filed five times, so every id resolved to five candidates and therefore, by
-  the bridge's own refusal-to-guess rule, to `nil`. The bridge went silent for
-  everything, which is the worst shape this bug could take: the correctness
-  failure is invisible and looks like "no anime ids exist".
-
-  The shared state is now the *task*, not the flag — the first caller starts it,
-  the rest await the same one. A failed fetch is still not remembered, since one
-  that failed is worth retrying.
-
-  Only reachable by callers who had wired the bridge in, which is why it
-  survived a release: it is in no default provider set.
-
-### Documented
-
-- **`AnimeIDBridge` is opt-in, and that was nowhere.** It appears in no default
-  provider set, so the id → bridge → AniList chain is off until a caller adds
-  `AnimeIDBridge()` to `MetadataAggregator(providers:)`. A consumer can hold the
-  dependency for two releases with the feature quietly switched off — one did.
-- **The one-instance rule costs more here than elsewhere.** Every other provider
-  built per lookup is merely unpaced; a bridge built per lookup downloads 7.5 MB
-  per lookup, because the index it builds *is* the instance. Now said on the
-  initialiser, where the reader is.
+- `AnimeIDBridge` downloads once for concurrent callers; documented as opt-in.
 
 ## [0.10.0] — 2026-09-05
 
-Search, browsing and people — and the rule for where they live.
-
-### Where a method lives
-
-**If several providers could answer, it belongs on `MetadataAggregator` and the
-answer carries its source. If exactly one can, it belongs on that provider's own
-type**, where the type a caller reached for is itself the attribution. A search
-ranking and a popularity list have one possible source and nothing to
-cross-reference; routing them through the aggregator would dress one provider's
-opinion as a merged one, which is an API lying quietly.
-
-### Added
-
-- **`TMDBProvider.candidates(for:kind:page:)`.** The ranked list of what a search
-  might have meant, with posters and years. `snapshot(for:)` still collapses to
-  one, which is right when a title is unambiguous and wrong when a person should
-  choose.
-- **`TMDBProvider.titles(in:page:)`** over ten published lists — popular, top
-  rated, now playing, upcoming, on the air, airing today, trending today and this
-  week, for films and shows. A trending list states its kind per row and drops
-  the people in it.
-- **People.** `person(id:)`, `searchPeople(_:)` and `filmography(personID:)`,
-  which returns both departments in one list ordered newest first: someone who
-  directed one film and acted in another is credited for both, and splitting them
-  would make a caller ask twice to show one filmography.
-
-### Fixed
-
-- **Language and region are settable in place** — `updateLanguage(_:)` and
-  `updateRegion(_:)`, alongside `updateAPIKey(_:)`. Rebuilding the provider was
-  the obvious way to change them and costs more than it looks: the request
-  allowance and every remembered response live in the instance, so a new one
-  starts unpaced and empty. A user toggling a language setting twice would be
-  unpaced at the moment they are making the most requests. Cached responses are
-  dropped on a real change, since they are in the old language, and remembered
-  orderings go with them because episode-group names are localised.
+- Search, lists and people on `TMDBProvider`: `candidates(for:kind:page:)`, `titles(in:page:)`,
+  `person(id:)`, `searchPeople(_:)`, `filmography(personID:)`.
+- `updateLanguage(_:)` and `updateRegion(_:)`.
 
 ## [0.9.0] — 2026-09-05
 
-The last of the plan that can be built without a new credential. Verified live
-against AniList, not just fixtures.
-
-### Added
-
-- **`Relation`** — sequels, prequels, side stories, adaptations. This is the
-  piece anime needs and western television does not: a second season is usually a
-  *separate work* with its own id and its own episode numbering from one.
-  `Shingeki no Kyojin Season 2` is not season 2 of anything as far as its record
-  is concerned, and a sequel edge is the only thing tying it to the first.
-  `isWatchable` distinguishes a related manga from a related series.
-- **Voice actors.** An anime cast is its voice actors listed against the
-  characters they play — which is what a person expects to see on an anime
-  record, and what TMDB's credits for the same title usually lack.
-- **`ReleaseStatus`**, one vocabulary across providers. TMDB says
-  `Returning Series`, AniList says `RELEASING`; both now arrive as `.airing`. A
-  consumer comparing two providers' answers should not have to know both their
-  words. **Breaking:** `status` was a `String`.
-- **Studio and tags from AniList.** The studio is the animator, not the
-  committee — AniList lists producers, licensors and broadcasters beside it, and
-  naming all seven answers a question nobody asked. Tags below rank 60 are
-  dropped: a tag two people agreed on is noise, not a keyword.
-
-### Verified live
-
-Attack on Titan returns WIT STUDIO, tags `Kaiju / Revenge / Tragedy`, Yuuki Kaji
-as Eren Yeager, one sequel edge and ten watchable relations of eleven. Frieren
-returns MADHOUSE and `Sousou no Frieren 2nd Season`.
+- `Relation`, voice actors, `ReleaseStatus` (breaking: `status` was a `String`), AniList studio and tags.
 
 ## [0.8.0] — 2026-09-05
 
-The id bridge, and a cache.
-
-### Added
-
-- **`AnimeIDBridge`.** Anime lives under two numbering systems that do not meet:
-  TMDB and IMDb number the broadcast, AniList, MAL and AniDB number the work.
-  The published Fribb cross-map is fetched once, projected down to id pairs, and
-  the rest of the 7.5 MB discarded. **No credential.**
-- **Chained resolution.** Each round of a lookup can unlock the next — TMDB finds
-  the IMDb id, the bridge turns it into a MyAnimeList id, MDBList can then be
-  asked for MyAnimeList's score. Bounded at two extra rounds, and it stops the
-  moment a round learns nothing.
-- **`Lookup.season`**, so a shared broadcast id can be narrowed.
-- **An in-memory response cache** on every provider. A show page opened twice is
-  one request; a scan asking for the same franchise repeatedly is one request.
-  Never written to disk — staleness is then bounded by how long the app runs,
-  which needs no eviction policy and cannot be wrong after a restart. A body that
-  fails to decode is not cached, since caching a failure repeats it without the
-  round trip that might have fixed it.
-
-### The bridge refuses rather than guesses
-
-The mapping is many-to-one in the direction Slate queries it: *3x3 Eyes* and its
-sequel share one IMDb id and one TMDB id. A shared id therefore resolves to
-nothing unless ``Lookup/season`` narrows it. Returning the first match would file
-a sequel's ids onto the original, and nothing downstream would notice — the same
-reason nothing here is ever clamped.
-
-Both shapes of both ambiguous fields decode: `imdb_id` is an array on newer rows
-and a bare string on older ones, `themoviedb_id` is `{"tv": n}` or a bare number.
+- `AnimeIDBridge`, chained resolution rounds, `Lookup.season`, an in-memory response cache.
 
 ## [0.7.0] — 2026-09-05
 
-Everything the request was already paying for, plus the episode lists.
-
-### Added
-
-- **Streaming availability**, from TMDB's watch providers — no Watchmode key
-  needed. Scoped to one region and never merged across regions: a service
-  carrying something in the US and not in France is the ordinary case, and a list
-  that hides which country a row belongs to answers a question nobody asked.
-  Subscription, rent, buy, ads and free are distinguished, because "available"
-  and "available for £13.99" are different answers.
-- **Franchise** (`The Matrix Collection`), **keywords**, **studios** — networks
-  for television, production companies for film — **original language**, **origin
-  country**, **status**, and **next/last episode air date**. All from
-  `append_to_response` on the request already being made: one round trip, not
-  eight.
-- **A localised-synopsis fallback.** TMDB returns `""` rather than omitting the
-  field when a language has no translation, so a French library rendered a blank
-  where a synopsis should be. `translations` rides on the same request, so the
-  fallback to English costs nothing — and an actual French translation is still
-  preferred to it.
-- **Episode lists, restored and extended.** `episodes(ofShow:nativeSeason:)` now
-  carries name, air date, still, synopsis and score. An unaired episode has no
-  date rather than a guessed one.
-
-### Notes
-
-`origin_country` and `original_language` are here because `JP` plus animation is
-the oldest anime heuristic there is, and a consumer that wants to check AniList's
-answer against something should be able to.
+- Watch providers, franchise, keywords, studios, original language, origin country, status,
+  air dates, a localised-synopsis fallback, and episode lists.
 
 ## [0.6.0] — 2026-09-05
 
-Cross-referencing, which is the thing the two-provider cut traded away. Coverage
-of *titles* was never the weak half; coverage of *fields* was.
-
-### Added
-
-- **`MDBListProvider`.** One key returns IMDb, Metacritic, both tomatometers,
-  Letterboxd, Trakt and MyAnimeList together — which is what OMDb and Trakt were
-  each going to be added for separately. Bearer token, injected and rotatable;
-  MDBList also accepts `?apikey=`, and this deliberately does not use it.
-- **`Rating`, and `TitleMetadata.ratings`.** One entry per site, **never
-  averaged**: sites measure different things and disagree usefully, and a film
-  Letterboxd loves and the tomatometer does not is a signal that an average
-  destroys. MDBList's own blended `score` is not reported as a rating for the
-  same reason — it would put an average where a source belongs.
-- **Both scales on every rating.** The normalised 0…10 so two sites are
-  comparable, and the site's own number because Metacritic is out of 100,
-  Letterboxd out of 5, and "73%" and "7.3" read differently to a person. The
-  scale is chosen from the source name rather than guessed from magnitude, which
-  would read a 4.5 IMDb score as a Letterboxd one.
-- **A second lookup pass, once.** MDBList resolves by id and has no title
-  search, so on a search by name it cannot answer until TMDB supplies an id.
-  `metadata(for:)` now asks the silent providers again with the ids it learned —
-  and only when it learned something, so an id-first lookup still costs one round
-  trip.
-
-### Restored
-
-- **Cast**, cut in 0.5.0 for having no caller. That audit optimised for the
-  callers that exist; this package is judged on coverage, and cast is one of the
-  fields a person expects a metadata layer to have. `contentRating` and
-  `trailerYouTubeID` were kept on the same reasoning and it applies here too.
+- `MDBListProvider`, `Rating` and `ratings`, a second lookup pass; cast restored.
 
 ## [0.5.0] — 2026-09-04
 
-A ponytail audit, applied. **436 lines removed, nothing added.** Every removal
-had zero callers outside its own tests — verified by grep, not assumed. Breaking,
-because most of it was public.
-
-### Removed
-
-- **The candidate list.** `candidates(for:kind:)`, `Candidate`, `CandidateProvider`
-  and the whole search-candidates file. Built so a person could disambiguate
-  "Dragon Ball"; the actual fix was exact-title matching, which shipped in 0.1.2
-  and works. Nothing ever called it.
-- **Cast.** `CastMember`, both credits payloads, `castMembers`, `profileURL`.
-  Added because a plan listed "People / Cast". Unlike `contentRating` and
-  `trailerYouTubeID`, which were built against call sites that exist in the
-  consuming app today, this had none — the difference between deferred and
-  speculative.
-- **`Artwork.sized(atLeast:)`** and the two fields that existed to serve it. The
-  grid argument is real and hypothetical; a consumer can append `/w342/`.
-- **`AniListProvider.artwork`.** It refetched the entire record over GraphQL to
-  return two URLs `metadata(for:)` already returns.
-- **`metadata(for: [Lookup], maxConcurrent:)`.** A library scan no caller
-  performs. The rate limiter already paces a plain loop.
-- **`TMDBProvider.episodes(ofShow:season:)`** and its payload, **`forgetSeasons()`**,
-  **`SeasonStructure.absolute(ofSeason:episode:)`**, **`Field.dissent`**,
-  **`Identifiers.isEmpty`** — five public members, zero non-test callers.
-- **`SeasonProvider` and `CandidateProvider`**, one conformer each.
-  `ArtworkProvider` has two and stays.
-- **`Codable` on `Provider`, `Kind`, `Identifiers`, `FieldKey`, `ArtworkKind`,
-  and `CaseIterable` on `Provider` and `ArtworkKind`.** Nothing encodes any of
-  them; `allCases` is read once, on `FieldKey`. This is the conformance-for-nobody
-  that CinemaResolvers cut six public symbols for in its own 2.0.0.
-- **The `decoder:` parameter on the internal HTTP helper**, which had one
-  occurrence: its declaration.
-
-### Kept, and why
-
-`Field`, `Attributed`, `FieldKey` and `provenance` have no caller either — the
-consuming app takes `searchNames` and nothing else. They are the reason this
-package exists rather than being a thin TMDB client, and an audit that cuts them
-has audited the requirement instead of the code. `contentRating` and
-`trailerYouTubeID` stay for the same reason in reverse: the call sites are
-written, in another repository, today.
-
-58 tests, down from 65 — the seven removed tested only removed API.
+- Removed unused public API (436 lines), including `Candidate`, cast and several conformances.
 
 ## [0.4.3] — 2026-09-04
 
-Documentation only; behaviour unchanged. Tagged for the same reason 0.4.2 was —
-where a warning lives decides whether anyone reads it.
-
-### Changed
-
-- **The `nativeSeason:` coupling is now stated on the concrete implementations**,
-  not only on `MetadataAggregator.artwork` and the `ArtworkProvider` protocol. A
-  caller holding a `TMDBProvider` directly — which is how the one known consumer
-  uses this package — got no parameter documentation at all, because Quick Help
-  shows the concrete method's doc rather than the protocol's. The warning existed
-  in the two places that caller would not look.
-
-  Passing a corrected season number returns a real picture of the wrong season
-  with nothing in the result to say so: Bleach's arc season 2 lives inside TMDB's
-  season 1, so asking for 2 returns Thousand-Year Blood War's posters.
-
-- **`AniListProvider.artwork` documents that a non-nil season returns `nil`.**
-  AniList files each cour as its own entry and holds no season-level art, so
-  refusing is right — but silence about refusing is not.
+- Documentation only: `nativeSeason` stated on the concrete implementations.
 
 ## [0.4.2] — 2026-09-04
 
-Documentation only; behaviour is unchanged. Tagged rather than left on `main`
-because the words *are* the contract, and 0.4.1 shipped the wrong reason for the
-right behaviour.
-
-### Changed
-
-- **`deduplicatedNames` is now justified as a fact about names, not about a
-  destination.** 0.4.1 said it folded case "because the destinations are
-  case-insensitive searches" — which is a fact about a transport, and a published
-  contract resting on one is a contract a future maintainer may reasonably
-  un-fold for a case-sensitive destination. The real reason is simpler and does
-  not depend on anyone's endpoint: capitalisation does not make a different
-  title, so `BLEACH` and `Bleach` name one work. Likewise the ordering, which is
-  now justified by the order being information the *caller* owns — a romaji-first
-  list asserts which name is likeliest — rather than by how one resolver happens
-  to consume it.
-
-  The doc now says explicitly that a destination with its own rule needs its own
-  fold at its own boundary, and that a package should not skip that on the
-  grounds its callers were careful.
+- Documentation only: `deduplicatedNames` justified as a fact about names.
 
 ## [0.4.1] — 2026-09-04
 
-Additive only, so an `upToNextMinor` pin picks it up without a bump.
-
-### Added
-
-- **`[String].deduplicatedNames` is public.** Three implementations of the same
-  primitive existed across the three repositories because nobody could reach this
-  one. The published contract is the **ordering**, not the deduplication: a
-  resolver that stops at the first name to find anything is choosing by position,
-  so the first spelling of a repeated name survives and a romaji-first list stays
-  romaji-first. Case-insensitive, because the destinations are case-insensitive
-  searches — `BLEACH` and `Bleach` are one question.
-
-  A guard at a package's own boundary is *not* made redundant by this. Deduping
-  because the caller was careful is one careless caller away from the bug; this
-  publishes the primitive, not a promise about what arrives.
-
-### Documented
-
-- **One provider instance per app.** The request allowance lives in the provider,
-  and for `AniListProvider` — a struct holding a reference — copies share it while
-  a freshly constructed one gets a new one. `AniListProvider()` per lookup is
-  paced against nothing, and the only symptom is 429s arriving later than they
-  should have. `TMDBProvider` holds the remembered orderings too.
-
-  Nothing in either type signature said this, and a consumer had to work it out
-  from the outside to hold the aggregator statically. Changing it would break a
-  caller without a signature moving.
+- `[String].deduplicatedNames` is public; one provider instance per app documented.
 
 ## [0.4.0] — 2026-09-04
 
-The fields a library actually writes to a record, which Slate could not supply.
-Reading Cinema's `apply()` — the one known consumer — it sets `name`, `synopsis`,
-`yearOfRelease`, `contentRating`, `genres`, `isAnime`, `trailerYouTubeID` and
-artwork. Slate covered five of those.
-
-### Added
-
-- **`contentRating`.** Age ratings are **not translations of each other**:
-  `TV-MA` has no French equivalent, France says `16`. So
-  `TMDBProvider(accessToken:language:region:)` asks for one country and returns
-  *nothing* rather than a rating from a system the viewer does not use. Films
-  read it from release dates, television from content ratings, and blank
-  certifications — TMDB has plenty — are skipped rather than returned as an
-  empty rating.
-- **`trailerYouTubeID`.** A key, not a URL, because a player wants the id. An
-  official trailer wins over an unofficial one, which wins over a teaser, which
-  beats a blank space where a preview should be.
-- **`cast`.** In billing order, with characters and profile images. Television
-  uses aggregate credits, where a role spans a run; films use plain credits.
-- **`candidates(for:kind:)`.** What a search might have meant, so a person can
-  choose instead of being handed an answer. "Dragon Ball" resolved to Dragon
-  Ball Z for as long as nobody could see the alternatives — a picker is the
-  cheapest possible fix for that class of bug. People are filtered out of
-  `/search/multi` results, since they are not titles.
-
-All three fields arrive in the same request as the rest of the record, through
-`append_to_response`. One request, not five.
-
-### Testing
-
-The two suites that share the stub table are nested now: as siblings they ran in
-parallel and raced each other's routes, which failed as four unrelated 404s.
+- `contentRating`, `trailerYouTubeID`, `cast` and `candidates(for:kind:)`.
 
 ## [0.3.0] — 2026-09-04
 
-The things that stop it working on a whole library rather than on the fourteen
-titles that were checked by hand.
-
-### Added
-
-- **Pacing.** `RateLimiter` hands out turns in order, so a burst is spread rather
-  than dropped: AniList allows about ninety requests a minute, and a corrected
-  show costs three TMDB requests with a fourth for artwork. Scanning a few
-  hundred titles is well over a thousand requests, and unpaced that arrives as a
-  wall of 429s that reads as the provider being down.
-- **Retries that respect the server.** 429 and 5xx are retried up to three tries
-  total, waiting the `Retry-After` the server gave — it knows when its window
-  resets, and guessing shorter just burns the next attempt. Capped at thirty
-  seconds, because waiting minutes inside one lookup is worse than reporting it.
-  A 401 is not retried: an expired credential will not fix itself.
-  `SlateError.rateLimited` is distinct from `.http` so "slow down" can be told
-  from "this will never work".
-- **`metadata(for: [Lookup])`.** A whole library, in the order asked, with
-  bounded concurrency. Three hundred titles started at once is a thousand
-  requests in flight, which the providers answer with 429s whatever the rate
-  limiter would have preferred.
-- **A metadata language.** `TMDBProvider(accessToken:language:)` — titles and
-  overviews in `fr-FR` or `ja-JP` where the community supplied them. Artwork is
-  deliberately unaffected: every language is fetched and
-  `ArtworkSet.best(_:preferring:)` chooses.
-
-### Fixed
-
-- **Film artwork returned nothing when the film arrived by IMDb id.** It required
-  a TMDB id outright, while the television path had been looking one up all
-  along. Found by testing films for the first time.
-- **A film's search names contained the same name twice** whenever its title and
-  original title matched — which is every film in its own language. The
-  aggregator deduplicated, so this was invisible until a provider was tested on
-  its own; `NyaaResolver` stops at the first name that finds anything, and would
-  have asked the same question twice. Deduplication now happens where the names
-  are made.
-
-### Testing
-
-**Every TMDB request path can now be tested without a credential.** `StubURLProtocol`
-answers from canned responses, so search, find, details, episode groups and
-artwork are exercised in CI rather than by hand in a terminal. Films had never
-been run at all — both bugs above came from the first test that tried one. There
-are also tests asserting the token never appears in a URL, that an ordering is
-fetched once and remembered, and that a 429 is retried while a 401 is not.
+- Pacing, retries, a metadata language, and stubbed request tests; film artwork by IMDb id fixed.
 
 ## [0.2.0] — 2026-09-04
 
-Artwork, on the same principle as the rest: one URL is not an answer when a show
-has forty posters in a dozen languages and the right one depends on who is
-looking.
-
-### Added
-
-- **`ArtworkSet` and `Artwork`.** Every poster, backdrop and logo every provider
-  holds, each carrying its language, size, rating and provider. Unsorted, because
-  a consumer offering a picker wants the list — `best(_:preferring:)` applies the
-  rules when a consumer wants one image.
-- **Choosing rules that differ by kind**, which is the domain knowledge worth
-  having. Posters and logos follow the viewer's language, and a *textless* image
-  beats one in a language nobody asked for — a title treatment in a script the
-  viewer cannot read is worse than none. Backdrops invert it: textless wins
-  outright, because that is the one that can sit behind a title without two sets
-  of words fighting each other. Within a tier, rating then size.
-- **`Artwork.sized(atLeast:)`.** A grid of full-size posters is several megabytes
-  an item, which on a television is the difference between a list that scrolls and
-  one that does not. Providers serving a single size return it unchanged.
-- **Season posters** via `artwork(for:kind:season:)`, and `Episode.stillURL`.
-- **Logos, without a Fanart.tv key.** TMDB serves them in every language on the
-  credential we already have — the same shape as `TVDB Order` arriving without a
-  TheTVDB key.
-
-### Caught by running it
-
-Season artwork takes the **provider's own** season number, and the parameter is
-named `nativeSeason` to say so. Bleach's arc season 2 lives inside TMDB's season
-1; asking TMDB for "season 2" returns Thousand-Year Blood War's 58 posters — a
-real picture of the wrong thing, with nothing in the result to indicate it.
-`SeasonStructure.nativeSeason(ofSeason:)` does the translation.
-
-### Notes
-
-TMDB reports `""` as the language of an image with no text on it. Slate reads
-that as textless rather than as a language called empty string, which is the
-difference between finding the best backdrop and never finding one.
-
-Images are fetched unfiltered rather than asking TMDB for one language: filtering
-server-side means a second request whenever that language turns out to have
-nothing, and for a picker it is the wrong shape entirely.
+- `ArtworkSet` and `Artwork` with per-kind choosing rules, season posters and logos.
 
 ## [0.1.2] — 2026-09-04
 
-Everything here came out of running real shows against the live API rather than
-reasoning about them. Six failures, five of them fixed; the sixth turned out not
-to be a failure.
-
-### Fixed
-
-- **A legal drama was filed as anime.** Searching "Suits" matched *Is This a
-  Zombie? Of the Dead: Yes, This Suits Me Just Fine* — bare substring
-  containment lets a five-letter query match a word buried in a forty-four-letter
-  title. Containment still has to be allowed, since "Frieren" is how people ask
-  for *Sousou no Frieren*, so the shorter title must now be a substantial part of
-  the longer one. Frieren is 47% of its full title and passes; Suits is 11% of
-  that zombie title and does not.
-- **"Dragon Ball" was resolving to Dragon Ball Z.** TMDB's relevance answers a
-  franchise query with its most popular member, and 12971 is *Z* — 301 episodes,
-  whose Saiyan saga was the "biggest season" that made the show look correctly
-  divided. Requiring an exact title match lands on 12609, the 1986 series, 153
-  episodes, which is then correctly split into Toei's six official divisions.
-- **"Hunter x Hunter" was resolving to the 1999 adaptation.** 62 episodes and one
-  season instead of 148 and three — and every absolute number mapped against the
-  wrong run. Among results carrying the asked-for title exactly, which is what a
-  remake looks like, the popular one now wins. Where nothing matches the title
-  exactly, provider relevance stands: popularity would then be answering a
-  question nobody asked.
-- **A disambiguating year is no longer part of the name.** AniList files the
-  second adaptation as "Hunter x Hunter (2011)", so nothing a person types ever
-  matched it. Only parenthesised — a bare trailing year can be the title itself,
-  as in *Blade Runner 2049*.
-- **`×` now reads as the `x` everyone types.** It is punctuation to `isLetter`,
-  so it vanished in normalisation and `HUNTER×HUNTER` never matched
-  "Hunter x Hunter". Fixes `SPY×FAMILY` the same way.
-- **Jujutsu Kaisen is three seasons, not one of 59.** It slipped under the
-  60-episode bar by a single episode. A show filed as a *single* long season is a
-  much stronger signal than one long season among many, so that case is read at
-  50 — anime seasons are twelve or thirteen, occasionally twenty-six.
-- **Shows whose real seasons are in a production ordering are corrected.**
-  Jujutsu Kaisen carries no `TVDB Order` and no air-date ordering, so the
-  preference chain ran out and returned nothing. `production` and `tv` orderings
-  are now a third and last tier — they mean *how this show is divided* rather
-  than an alternate cut of it. Still excluded: `absolute` (that is the flat run
-  being corrected), `dvd` and `digital` (a release's cut), and `storyArc`. Shows
-  carry several and they disagree, so the pick is deterministic: a Latin name
-  over the localised duplicate, then fewest groups, then tightest coverage.
-
-### Refused
-
-Two corrections that were not corrections, both caught by running them.
-
-- **Frieren was being split into cours.** Read at two cours, its 38 episodes
-  under one number became 16, 12 and 10 — which is not how anyone numbers it;
-  releases run straight through to 28. Thirty-eight is not unambiguously more
-  than one season, hence the bar at 50.
-- **An ordering must actually break up the long run.** Hunter × Hunter's
-  `Complete Series` passed every eligibility rule and fixed nothing: it returned
-  the 62-episode run untouched as season one and filed the OVAs beside it as
-  seasons two to four, so the flattening survived wearing a correction's label.
-  The largest new season must be smaller than the one it replaced.
-
-### Not a failure
-
-**The 1999 Hunter × Hunter really is one season of 62 episodes.** Refusing to
-correct it was right, and the earlier diagnosis of "TMDB has no usable ordering,
-this is the AniDB-shaped gap" was wrong. The OVAs that ordering wanted to add as
-seasons — 8, 8 and 14 — are separate works, and AniList lists them as exactly
-that.
-
-### Verified against the live API
-
-Corrected: Bleach (366 flat → 17 arcs), Detective Conan (1212 → 31 years),
-Jujutsu Kaisen (59 → 24/23/12), Dragon Ball (153 → 6 divisions), One Piece and
-Naruto Shippūden via `TVDB Order`. Left alone, correctly: Attack on Titan, Demon
-Slayer, SPY×FAMILY, Frieren, Chainsaw Man, Hunter × Hunter (2011, whose own
-62/74/12 stands), Suits and Breaking Bad.
+- Matching fixes from live shows (Suits, Dragon Ball, Hunter x Hunter, `×`) and wider season correction.
 
 ## [0.1.1] — 2026-09-04
 
-### Fixed
-
-- **`episodeCount` no longer answers with one season's length.** AniList files a
-  *cour* as an entry: its "Attack on Titan" is 25 episodes, because that is
-  season one, while TMDB's show is the whole run. With AniList winning every
-  field, a series-level question got a season-level answer — a category error, not
-  a preference. `episodeCount` is now TMDB-first, while AniList keeps the names,
-  the anime flag and everything else a cour-level answer is right for. The cour
-  count is still there under `value(from: .aniList)`.
-
-### Added
-
-- **`MetadataAggregator.fieldPriority`.** Per-field provider order, which the
-  0.1.0 notes said would arrive when a third provider made the table non-empty.
-  It turned out two were enough. Defaults to the one entry above; pass your own
-  to override.
+- `episodeCount` prefers TMDB; `MetadataAggregator.fieldPriority`.
 
 ## [0.1.0] — 2026-09-04
 
-Television has seasons and episodes. 0.0.1 answered "366 episodes" for Bleach and
-called that a description of a series; it was not one.
-
-TMDB files Bleach as a single season of 366 episodes and Detective Conan as one
-of 1212. Nothing else in the world numbers them that way — Wikipedia, TheTVDB and
-the groups that name the releases all count arcs — so a library filed TMDB's way
-lines up with nothing a person reads, searches for, or downloads. The correction
-comes from TMDB itself, through `episode_groups`, which is where the community
-keeps the orderings TMDB's own numbering isn't.
-
-That means **TheTVDB's ordering without a TheTVDB key**, which is most of the
-reason the plan wanted TheTVDB in the first place.
-
-### Added
-
-- **`SeasonStructure`.** How a series is divided, with `ordering` saying whether
-  that is the provider's own answer or a correction, and `absoluteNumbering`
-  saying whether the correspondence was *stated* by the provider or walked.
-- **`Season` and `Episode`.** Arc names, episode titles, air dates, and each
-  episode's `native` position so the two numberings stay translatable.
-  `Season.episodes` is optional: `nil` means not loaded, which is not the same as
-  a season with no episodes.
-- **Absolute-number translation.** `position(ofAbsolute:)` turns `Bleach - 340`
-  into the season and episode it is shown under; `absolute(ofSeason:episode:)`
-  goes back. Past the end of a run is left **unmapped, never clamped** — a number
-  beyond the last episode means the season list is incomplete or the show was
-  matched wrongly, and filing it somewhere plausible hides that.
-- **`nativeRange(ofSeason:)`.** The provider's own episode numbers for one arc,
-  when contiguous — Bleach's second arc is TMDB S1 E21–41, and a bounded range is
-  what an acquisition can ask an indexer for instead of matching a
-  complete-series pack. An ordering that jumps around returns `nil` rather than a
-  range quietly covering episodes it does not hold.
-- **`SeasonProvider`** and `MetadataAggregator.seasons(for:)`. A separate request
-  from `metadata(for:)`, because it is a separate question and several requests
-  more expensive.
-- **`TMDBProvider.episodes(ofShow:season:)`** for the ordinary path, where
-  episodes are not already in hand. The episode-group path fills them for free.
-  Orderings are cached for the life of the provider, `nil` results included.
-
-### How narrowly it intervenes
-
-Choosing an ordering is a decision, not a lookup — Bleach carries thirteen and
-they disagree with each other — and getting it wrong silently renumbers a
-library. So the correction applies only when TMDB is *clearly* flattening (any
-season of 60 or more), only towards an ordering that accounts for every episode
-the show is said to have, and only by name: `TVDB Order` first, then an
-original-air-date ordering. Story-arc orderings are never a fallback; Bleach has
-three splitting the same run 21, 12 and 25 ways. Specials keep season 0 rather
-than being renumbered into the run.
-
-Ported from Cinema's `ShowSeasons`, `ArcSeasons` and `AbsoluteEpisodeMap`, whose
-thresholds were arrived at against real shows: Suits, Rick and Morty, Attack on
-Titan, SPY × FAMILY and Frieren are untouched, while Bleach, Detective Conan, One
-Piece and Naruto Shippūden are all caught.
-
-### Changed
-
-- **The case against AniDB and TheTVDB is restated, because the old one expired.**
-  0.0.1 rejected AniDB on the grounds that episode numbering was solved
-  app-side. Slate owns that now, so that argument no longer holds. TheTVDB's
-  ordering arrives free through TMDB's episode groups; AniDB's fansub-accurate
-  numbering and specials are the one gap that does not close, which makes it the
-  most likely next provider rather than a permanent no. The bar is unchanged:
-  name a title the current path gets wrong.
+- `SeasonStructure`, `Season`, `Episode` and absolute-number translation from TMDB episode groups.
 
 ## [0.0.1] — 2026-09-04
 
-First cut. Two providers, one credential, and one design decision that the rest
-of the package exists to serve: **Slate does not return merged values.**
+- First cut: `MetadataAggregator`, `Field`, `FieldKey`, provenance, `TMDBProvider`, `AniListProvider`.
 
-Every field of `TitleMetadata` carries the provider that supplied it. A library
-that stores merged metadata behind a single *this record was edited* flag will,
-on a refresh from one provider, silently overwrite a correction that came from
-another — and it reads as a sync bug for weeks. Provenance has to be per field,
-and it is far cheaper to design in now than to retrofit later.
-
-The split of responsibility, which is the thing to remember: Slate settles
-**provider versus provider**, because that AniList outranks TMDB for anime is a
-fact about AniList and TMDB. Slate does not settle **human versus machine**,
-because whether a hand-edit outranks a refresh is a fact about the consuming
-app's schema and its user.
-
-### Added
-
-- **`MetadataAggregator`.** Asks every provider concurrently, orders their
-  answers by `priority`, and never throws — a provider that fails lands in
-  `TitleMetadata.failures` and the others still answer.
-- **`Field<Value>`.** One field's answers, winner first. `best` and
-  `bestProvider` are the verdict; `dissent` is what the losers said, reachable
-  but never the default read; `value(from:)` asks one provider directly.
-- **`FieldKey` and `TitleMetadata.provenance`.** Fields addressable without
-  knowing their types, so a consumer can express *"was this field hand-edited,
-  and is it machine-owned anyway"* as a loop rather than as one branch per
-  field. Thirteen hand-written branches drift apart; a loop does not.
-- **`TitleMetadata.resolveInput`.** `(imdbID, kind, searchNames)` — the shape an
-  acquisition layer wants, without depending on one. `nil` unless some provider
-  supplied both an IMDb id and a kind, since a resolver cannot ask without them.
-- **`TMDBProvider`.** The IMDb id, western movies and TV, art, ratings. Actor;
-  the v4 read token is injected, rotated through `updateAPIKey(_:)`, and sent as
-  `Authorization: Bearer` — never a query string. No key is stored in this
-  repository and none should be.
-- **`AniListProvider`.** Anime detection, romaji and native names, episode
-  counts. **No credential**, which is why it is in the first cut.
-- **`Lookup`, `Snapshot`, `MetadataProvider`.** A provider answers with flat
-  optionals and nothing else: it does not rank itself, does not merge, and does
-  not guess.
-
-### Notes on two deliberate silences
-
-- **TMDB reports `isAnime` as `nil`, not `false`.** TMDB has no anime type and
-  its `anime` keyword is volunteer-applied to a fraction of what qualifies.
-  AniList answering at all is the signal; a guess dressed as a value is worse
-  than an absence.
-- **AniList synonyms are filtered to mostly-Latin names.** Romaji, English and
-  native Japanese are always kept — trackers do file under the Japanese title —
-  but AniList carries the Thai, Hebrew and Arabic name of everything, and a
-  resolver that matches by substring gets nothing from them but false hits.
-
-### Not done
-
-Recorded because each was considered on evidence and rejected, and a future
-reader deserves the reasoning rather than a re-argument.
-
-- **AniDB.** Its distinctive value is fansub-accurate episode numbering, which
-  the consuming app already solves. It is rate-limited and licence-encumbered,
-  and an embedded client id in a public repository is a ban waiting to happen.
-  The bar for adding it: a *named* title the current path gets wrong.
-- **manami.** Maps AniList ↔ MAL ↔ AniDB ↔ Kitsu ↔ anime-planet ↔ livechart, and
-  bridges to neither IMDb nor TMDB. Tens of megabytes for ids nothing reads.
-- **Fribb / anime-lists.** A different dataset, and it *does* carry the bridge —
-  `imdb_id`, `themoviedb_id`, `tvdb_id` alongside `anilist_id`, plus the
-  `episode_offset` that absolute-to-season mapping otherwise hand-rolls. So the
-  TMDB→AniList id bridge is possible; it is simply not needed yet. Two things to
-  know before reopening it: 7.5 MB for the full list, and the mapping is
-  many-to-one in the direction we would query it — the first three records
-  already show two AniDB entries sharing one `imdb_id` and one `themoviedb_id`.
-  An IMDb id resolves to a *set*, so the bridge would still need the
-  disambiguation that searching by name does today.
-- **Watchmode.** Answers "where can I stream this", which is the question this
-  trio exists so nobody has to ask.
-- **Trakt scrobbling.** A different app's premise; its ratings duplicate
-  MDBList's.
-- **TheTVDB, Fanart.tv, MDBList, OMDb.** Each is one more key and one more setup
-  step. Add one when a field is missing that a user notices, not before.
-- **Per-field provider priority.** Priority is genuinely per-field domain
-  knowledge — TheTVDB beats TMDB for episode structure, Fanart beats both for
-  logos. With two providers that table has nothing in it. When a third lands,
-  `MetadataAggregator.priority` becomes `[FieldKey: [Provider]]` and no caller
-  changes.
-
+[0.20.0]: https://github.com/Nico8324/Slate/releases/tag/v0.20.0
 [0.19.0]: https://github.com/Nico8324/Slate/releases/tag/v0.19.0
 [0.18.0]: https://github.com/Nico8324/Slate/releases/tag/v0.18.0
 [0.17.0]: https://github.com/Nico8324/Slate/releases/tag/v0.17.0

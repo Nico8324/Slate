@@ -5,7 +5,7 @@ import Foundation
 /// Kept per source rather than averaged. An average of IMDb, Metacritic and a
 /// tomatometer is a number no site would recognise, and the reason a person
 /// wants ratings at all is usually that they trust one of them.
-public struct Rating: Sendable, Equatable, Identifiable {
+public struct Rating: Sendable, Equatable, Identifiable, Codable {
     /// As the aggregator names it: `imdb`, `metacritic`, `tomatoes`,
     /// `tomatoesaudience`, `letterboxd`, `myanimelist`, `trakt`, `tmdb`,
     /// `rogerebert`.

@@ -55,6 +55,7 @@ public enum FieldKey: String, Sendable, Hashable, CaseIterable {
     case crew, trailers, recommendations
     case watchOptions, keywords, studios, originalLanguage, originCountries
     case franchise, status, nextEpisodeAirDate, nextEpisode, lastEpisodeAirDate, homeReleaseDate, relations
+    case artwork
 }
 
 /// The aggregated answer for one title: every field carries every provider's
@@ -104,6 +105,8 @@ public struct TitleMetadata: Sendable, Equatable {
     public var lastEpisodeAirDate: Field<Date>
     /// When a film can first be watched at home, rather than seen in cinemas.
     public var homeReleaseDate: Field<Date>
+    /// Artwork that came with the details. See ``Snapshot/artwork``.
+    public var artwork: Field<ArtworkSet>
 
     /// Every name this title is known by, highest-priority provider first and
     /// deduplicated — romaji ahead of English for anime, because that is what a
@@ -148,6 +151,7 @@ public struct TitleMetadata: Sendable, Equatable {
         nextEpisode: Field<EpisodePosition> = .init(),
         lastEpisodeAirDate: Field<Date> = .init(),
         homeReleaseDate: Field<Date> = .init(),
+        artwork: Field<ArtworkSet> = .init(),
         searchNames: [String] = [],
         failures: [Provider: String] = [:]
     ) {
@@ -183,6 +187,7 @@ public struct TitleMetadata: Sendable, Equatable {
         self.nextEpisode = nextEpisode
         self.lastEpisodeAirDate = lastEpisodeAirDate
         self.homeReleaseDate = homeReleaseDate
+        self.artwork = artwork
         self.searchNames = searchNames
         self.failures = failures
     }
@@ -251,6 +256,7 @@ extension TitleMetadata {
         case .nextEpisode: nextEpisode.candidates.map(\.provider)
         case .lastEpisodeAirDate: lastEpisodeAirDate.candidates.map(\.provider)
         case .homeReleaseDate: homeReleaseDate.candidates.map(\.provider)
+        case .artwork: artwork.candidates.map(\.provider)
         }
     }
 

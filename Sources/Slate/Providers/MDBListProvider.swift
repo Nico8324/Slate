@@ -26,14 +26,20 @@ public actor MDBListProvider: MetadataProvider {
     ///   with 401, which is why this provider never worked with a real key
     ///   until 0.15.0. Slate's logs strip query strings, and errors from
     ///   outside Slate are reduced to their kind, so the key reaches neither.
-    /// - Parameter session: Session used for requests; injectable for tests.
+    /// - Parameter session: Session used for requests.
     /// - Parameter cacheTTL: Cache lifetime in seconds; defaults to one hour.
     ///   Zero disables retention. Finite values are clamped to 0…365 days;
     ///   non-finite values use the default. Expired entries refresh on demand.
+    ///   Responses are also kept on disk, in `Caches/Slate/mdbList`.
     public init(apiKey: String, session: URLSession = .shared, cacheTTL: TimeInterval = 3600) {
+        self.init(apiKey: apiKey, cacheTTL: cacheTTL, transport: { try await session.data(for: $0) },
+                  cacheDirectory: ResponseCache.directory(for: .mdbList))
+    }
+
+    init(apiKey: String, cacheTTL: TimeInterval = 3600, transport: @escaping HTTP.Transport, cacheDirectory: URL? = nil) {
         self.apiKey = apiKey
-        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 5),
-                         cache: ResponseCache(ttl: cacheTTL), provider: .mdbList)
+        self.http = HTTP(transport: transport, limiter: RateLimiter(requestsPerSecond: 5),
+                         cache: ResponseCache(ttl: cacheTTL, directory: cacheDirectory), provider: .mdbList)
     }
 
     public func updateAPIKey(_ apiKey: String) {

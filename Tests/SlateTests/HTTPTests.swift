@@ -46,3 +46,26 @@ struct HTTPTests {
         #expect(HTTP.retryAfter(response) == nil)
     }
 }
+
+struct ResponseCacheTests {
+    @Test func aZeroLifetimeCacheKeepsNothing() async {
+        let cache = ResponseCache(ttl: 0)
+        await cache.store(Data([1, 2, 3]), for: "k")
+        #expect(await cache.data(for: "k") == nil)
+    }
+
+    @Test func theCacheStaysWithinItsByteBudget() async {
+        let cache = ResponseCache(limit: 10, ttl: 60, byteLimit: 5)
+        await cache.store(Data([1, 2, 3]), for: "a")
+        await cache.store(Data([4, 5, 6]), for: "b")
+        #expect(await cache.data(for: "a") == nil, "evicted, oldest first")
+        #expect(await cache.data(for: "b") != nil)
+    }
+
+    @Test func aDroppedConnectionIsRetriedButACancelledOneIsNot() {
+        #expect(HTTP.isTransient(URLError(.timedOut)))
+        #expect(HTTP.isTransient(URLError(.networkConnectionLost)))
+        #expect(!HTTP.isTransient(URLError(.cancelled)))
+        #expect(!HTTP.isTransient(URLError(.badServerResponse)))
+    }
+}

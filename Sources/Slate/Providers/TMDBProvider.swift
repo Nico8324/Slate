@@ -70,13 +70,22 @@ public actor TMDBProvider: MetadataProvider {
     ///   - accessToken: TMDB read token, supplied by the caller and sent as a bearer header.
     ///   - language: Metadata language, such as `fr-FR` or `ja-JP`.
     ///   - region: Country for ratings, availability, and release-window browsing; defaults to `US`.
-    ///   - session: Session used for requests; injectable for tests.
+    ///   - session: Session used for requests.
     ///   - cacheTTL: Response and season-cache lifetime in seconds; defaults to one hour.
     ///     Zero disables retention. Finite values are clamped to 0…365 days;
     ///     non-finite values use the default. Expired entries refresh on demand.
+    ///     Responses are also kept on disk, in `Caches/Slate/tmdb`, for the same lifetime.
     public init(
         accessToken: String, language: String = "en-US", region: String = "US",
         session: URLSession = .shared, cacheTTL: TimeInterval = 3600
+    ) {
+        self.init(accessToken: accessToken, language: language, region: region, cacheTTL: cacheTTL,
+                  transport: { try await session.data(for: $0) }, cacheDirectory: ResponseCache.directory(for: .tmdb))
+    }
+
+    init(
+        accessToken: String, language: String = "en-US", region: String = "US", cacheTTL: TimeInterval = 3600,
+        transport: @escaping HTTP.Transport, cacheDirectory: URL? = nil
     ) {
         self.cacheLifetime = .seconds(cacheTTL.isFinite ? min(max(0, cacheTTL), 31_536_000) : 3600)
         self.accessToken = accessToken
@@ -84,8 +93,10 @@ public actor TMDBProvider: MetadataProvider {
         self.region = region
         // TMDB is generous, but a library scan is thousands of requests and
         // there is no reason to be the loudest client on the server.
-        self.http = HTTP(session: session, limiter: RateLimiter(requestsPerSecond: 20),
-                         cache: ResponseCache(limit: 1024, ttl: cacheTTL, byteLimit: 128 * 1024 * 1024), provider: .tmdb)
+        self.http = HTTP(transport: transport, limiter: RateLimiter(requestsPerSecond: 20),
+                         cache: ResponseCache(limit: 1024, ttl: cacheTTL, byteLimit: 128 * 1024 * 1024,
+                                              directory: cacheDirectory),
+                         provider: .tmdb)
     }
 
     /// Rotate the token in place. Slate never persists it.
@@ -246,20 +257,18 @@ public actor TMDBProvider: MetadataProvider {
     /// the cache answers them rather than a second request.
     func detailsURL(id: Int, kind: Kind) throws -> URL {
         let path = kind == .movie ? "/movie/\(id)" : "/tv/\(id)"
-        // One request rather than five. `append_to_response` costs nothing extra
-        // and these are exactly the fields a library sets on a record.
-        // One request, not eight. Everything below is a field a library shows,
-        // and `append_to_response` returns them all for the price of the request
-        // already being made.
+        // One request, not nine: `append_to_response` returns every field a
+        // library shows for the price of the request already being made.
         let extras = kind == .movie
-            ? "external_ids,release_dates,videos,credits,keywords,translations,watch/providers,recommendations"
-            : "external_ids,content_ratings,videos,aggregate_credits,keywords,translations,watch/providers,recommendations"
-        // `language` alone filters `videos` to that one language, so a French
-        // lookup never saw the studio's own trailers and a language with no local
-        // trailer got none at all. English and untagged ride along for free.
+            ? "external_ids,release_dates,videos,credits,keywords,translations,watch/providers,recommendations,images"
+            : "external_ids,content_ratings,videos,aggregate_credits,keywords,translations,watch/providers,recommendations,images"
+        // `language` alone filters `videos` and `images` to that one language, so a
+        // French lookup never saw the studio's own trailers. English and untagged
+        // (textless, for images) ride along for free.
         return try URL.build(Self.api, path: path, query: [
             "append_to_response": extras, "language": language,
             "include_video_language": Self.videoLanguages(language, "en"),
+            "include_image_language": Self.videoLanguages(language, "en"),
         ])
     }
 
@@ -285,6 +294,7 @@ public actor TMDBProvider: MetadataProvider {
             runtimeMinutes: payload.runtime ?? payload.episode_run_time?.first,
             episodeCount: payload.number_of_episodes,
             genres: payload.genres?.map(\.name),
+            genreIDs: payload.genres?.map(\.id),
             rating: rating,
             posterURL: Self.imageURL(payload.poster_path),
             backdropURL: Self.imageURL(payload.backdrop_path),
@@ -316,6 +326,8 @@ public actor TMDBProvider: MetadataProvider {
             nextEpisode: payload.next_episode_to_air?.position,
             lastEpisodeAirDate: payload.last_episode_to_air?.air_date?.asReleaseDate,
             homeReleaseDate: payload.release_dates?.homeRelease(in: region),
+            artwork: payload.images?.artworkSet,
+            translatedTitles: payload.translatedTitles,
             searchNames: [title, originalTitle].compactMap { $0?.nilIfEmpty }.deduplicatedNames
         )
     }
@@ -426,8 +438,8 @@ public actor TMDBProvider: MetadataProvider {
     // MARK: - Payloads
 
     struct FindResponse: Decodable {
-        var movie_results: [SearchHit] = []
-        var tv_results: [SearchHit] = []
+        var movie_results: [CandidateResponse.Hit] = []
+        var tv_results: [CandidateResponse.Hit] = []
     }
 
     struct SearchResponse: Decodable {
@@ -490,6 +502,7 @@ public actor TMDBProvider: MetadataProvider {
         var watchProviders: WatchProviderBox?
         var created_by: [Creator]?
         var recommendations: TMDBProvider.CandidateResponse?
+        var images: TMDBProvider.Images?
 
         struct Creator: Decodable {
             let id: Int
@@ -505,7 +518,7 @@ public actor TMDBProvider: MetadataProvider {
             case status, belongs_to_collection
             case networks, production_companies, keywords, translations
             case next_episode_to_air, last_episode_to_air, content_ratings, release_dates
-            case videos, credits, aggregate_credits, created_by, recommendations
+            case videos, credits, aggregate_credits, created_by, recommendations, images
             // TMDB names this one with a slash, which is not a Swift identifier.
             case watchProviders = "watch/providers"
         }
@@ -638,6 +651,17 @@ public actor TMDBProvider: MetadataProvider {
             return candidate?.data?.overview?.nilIfEmpty
         }
 
+        /// Each language's title, by ISO 639-1; the first region listed wins.
+        var translatedTitles: [String: String] {
+            var titles: [String: String] = [:]
+            for entry in translations?.translations ?? [] {
+                guard let title = (entry.data?.title ?? entry.data?.name)?.nilIfEmpty,
+                      titles[entry.iso_639_1] == nil else { continue }
+                titles[entry.iso_639_1] = title
+            }
+            return titles
+        }
+
         /// Availability for one region only.
         ///
         /// Not merged across regions: a service carrying something in the US and
@@ -719,7 +743,7 @@ public actor TMDBProvider: MetadataProvider {
         }
 
         struct ExternalIDs: Decodable { var imdb_id: String? }
-        struct Genre: Decodable { let name: String }
+        struct Genre: Decodable { let id: Int; let name: String }
 
         struct ContentRatings: Decodable {
             struct Entry: Decodable { let iso_3166_1: String; let rating: String? }

@@ -65,6 +65,8 @@ public struct Snapshot: Sendable, Equatable {
     public var runtimeMinutes: Int?
     public var episodeCount: Int?
     public var genres: [String]?
+    /// The provider's genre ids, in the order of ``genres``.
+    public var genreIDs: [Int]?
     /// Normalised to 0...10 by the provider.
     public var rating: Double?
     public var posterURL: URL?
@@ -111,6 +113,10 @@ public struct Snapshot: Sendable, Equatable {
     /// When a film can first be watched at home — its first digital release —
     /// as opposed to ``releaseDate``, which for a film is when it opens in cinemas.
     public var homeReleaseDate: Date?
+    /// Posters, backdrops and logos in the viewer's language, English, and textless.
+    public var artwork: ArtworkSet?
+    /// The title in each language the provider has, by ISO 639-1 (`"en"` → `"Spirited Away"`).
+    public var translatedTitles: [String: String]
     /// Names to search by, this provider's preferred order first.
     public var searchNames: [String]
     /// Whether the provider matched a name only approximately. A loose match
@@ -127,6 +133,7 @@ public struct Snapshot: Sendable, Equatable {
         runtimeMinutes: Int? = nil,
         episodeCount: Int? = nil,
         genres: [String]? = nil,
+        genreIDs: [Int]? = nil,
         rating: Double? = nil,
         posterURL: URL? = nil,
         backdropURL: URL? = nil,
@@ -150,6 +157,8 @@ public struct Snapshot: Sendable, Equatable {
         nextEpisode: EpisodePosition? = nil,
         lastEpisodeAirDate: Date? = nil,
         homeReleaseDate: Date? = nil,
+        artwork: ArtworkSet? = nil,
+        translatedTitles: [String: String] = [:],
         searchNames: [String] = []
     ) {
         self.ids = ids.validated
@@ -161,6 +170,7 @@ public struct Snapshot: Sendable, Equatable {
         self.runtimeMinutes = runtimeMinutes.flatMap { $0 > 0 ? $0 : nil }
         self.episodeCount = episodeCount.flatMap { $0 > 0 ? $0 : nil }
         self.genres = genres?.deduplicatedNames.nilIfEmpty
+        self.genreIDs = genreIDs?.nilIfEmpty
         self.rating = rating.flatMap { $0.isFinite && (0...10).contains($0) ? $0 : nil }
         self.posterURL = posterURL
         self.backdropURL = backdropURL
@@ -184,6 +194,8 @@ public struct Snapshot: Sendable, Equatable {
         self.nextEpisode = nextEpisode
         self.lastEpisodeAirDate = lastEpisodeAirDate
         self.homeReleaseDate = homeReleaseDate
+        self.artwork = artwork.flatMap { $0.isEmpty ? nil : $0 }
+        self.translatedTitles = translatedTitles
         self.searchNames = searchNames.deduplicatedNames
     }
 }
@@ -196,24 +208,8 @@ public protocol MetadataProvider: Sendable {
 }
 
 extension Array where Element == String {
-    /// Names, trimmed, blanks dropped, case-insensitively deduplicated, **order
-    /// kept**.
-    ///
-    /// Both halves are claims about *names*, not about any destination they are
-    /// sent to — which is what makes this safe to publish. Capitalisation does
-    /// not make a different title: `BLEACH` and `Bleach` name one work, so the
-    /// list holds it once. And the order a caller gave is information the caller
-    /// owns — a romaji-first list is asserting which name is likeliest, so the
-    /// first spelling of a repeat survives and the order is never rearranged.
-    ///
-    /// A destination with its *own* rule — a search that folds case, an index
-    /// that ignores punctuation — needs its own fold at its own boundary. That
-    /// one is a fact about the transport and does not belong here, and a package
-    /// should not skip it on the grounds that its callers were careful.
-    ///
-    /// Worth having wherever a repeated name costs something: for a film whose
-    /// title and original title match, which is every film in its own language,
-    /// the naive list contains a duplicate.
+    /// Names trimmed, blanks dropped, deduplicated ignoring case; the first
+    /// spelling of a repeat is kept and the order never changes.
     public var deduplicatedNames: [String] {
         var seen: Set<String> = []
         return compactMap { name in

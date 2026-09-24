@@ -121,12 +121,9 @@ struct ErrorLoggingTests {
 
 @Suite("The failing URL")
 struct FailingURLTests {
-    private struct Offline: MetadataProvider, ArtworkProvider {
+    private struct Offline: MetadataProvider {
         let provider = Provider.tmdb
         func snapshot(for lookup: Lookup) async throws -> Snapshot? { try await fail() }
-        func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int?) async throws -> ArtworkSet? {
-            try await fail()
-        }
 
         /// The shape a TMDB search has: what the person typed, in the query
         /// string, on a host that cannot resolve.
@@ -147,12 +144,5 @@ struct FailingURLTests {
         let failure = result.failures[.tmdb]
         #expect(failure?.contains("private") == false, "not what was searched for")
         #expect(failure?.hasPrefix("URLError") == true, "still says what went wrong")
-    }
-
-    @Test func theSameHoldsForArtwork() async {
-        let set = await MetadataAggregator(providers: [Offline()])
-            .artwork(for: Identifiers(tmdb: 1), kind: .movie)
-
-        #expect(set.failures[.tmdb]?.contains("private") == false)
     }
 }

@@ -152,115 +152,6 @@ public struct MetadataAggregator: Sendable {
         return (snapshots, failures)
     }
 
-    /// How a series is divided.
-    ///
-    /// **TMDB only, whatever else is in ``providers``.** The correction this
-    /// exists for comes out of TMDB's `episode_groups` and has no equivalent
-    /// anywhere else, so this asks the `TMDBProvider`s in the list and skips
-    /// every other provider — including ones that answer ``metadata(for:)``
-    /// perfectly well. Worth saying because `MetadataAggregator(providers:)`
-    /// reads as *these are the providers*, and a method consulting a subset of
-    /// them by type is invisible until you read the body: adding a provider
-    /// here to make seasons work is inert, and nothing fails to tell you so.
-    ///
-    /// Nor is ``priority`` consulted — there is only ever one answer to prefer.
-    /// The first `TMDBProvider` in ``providers`` that returns a structure wins.
-    ///
-    /// A separate request from ``metadata(for:)`` because it is a separate
-    /// question and several requests more expensive. A caller asking *what is
-    /// this* should not pay for episode lists it did not ask for.
-    ///
-    /// - Parameter kind: Pass ``TitleMetadata/kind``'s best value. TMDB numbers
-    ///   films and shows separately, and a film's id is also some unrelated
-    ///   show's; `.movie` returns `nil` without asking.
-    public func seasons(for ids: Identifiers, kind: Kind? = nil) async -> SeasonStructure? {
-        let capable = providers.compactMap { $0 as? TMDBProvider }
-        guard !capable.isEmpty else {
-            // The inert-wiring case: providers were supplied, none of them was a
-            // TMDBProvider, and without this the caller sees only nil.
-            Log.seasons.error(
-                "no TMDBProvider among \(self.providers.count, privacy: .public) providers — seasons are TMDB-only, so this can only return nil"
-            )
-            return nil
-        }
-        for provider in capable {
-            guard !Task.isCancelled else { return nil }
-            do {
-                if let structure = try await provider.seasons(for: ids, kind: kind) { return structure }
-            } catch {
-                // Said as a failure, not folded into "no structure": a rejected token, a rate
-                // limit and a decode failure all used to read as a show that has no seasons.
-                Log.seasons.error(
-                    "season structure for \(Log.describe(ids), privacy: .public) failed: \(Log.describe(error), privacy: .public)"
-                )
-            }
-        }
-        Log.seasons.notice("no season structure for \(Log.describe(ids), privacy: .public)")
-        return nil
-    }
-
-    /// Every image every artwork-capable provider holds for one title, merged in
-    /// ``priority`` order and left unsorted.
-    ///
-    /// A provider that cannot supply pictures is skipped by type rather than
-    /// asked and found wanting, the same way ``seasons(for:)`` skips one that
-    /// cannot supply seasons.
-    ///
-    /// Never throws: a provider that fails lands in ``ArtworkSet/failures`` and
-    /// the rest still answer. Use ``ArtworkSet/best(_:preferring:)`` to choose
-    /// one, or hand the whole list to a picker.
-    ///
-    /// - Parameter ids: Identifiers for the title whose artwork is requested.
-    /// - Parameter kind: Whether the title is a movie or a series.
-    /// - Parameter nativeSeason: the **provider's own** season number, not one
-    ///   from a corrected ``SeasonStructure``. Translate first with
-    ///   ``SeasonStructure/nativeSeason(ofSeason:)``: Bleach's arc season 2 lives
-    ///   inside TMDB's season 1, and passing 2 straight through returns the
-    ///   posters for Thousand-Year Blood War.
-    public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async -> ArtworkSet {
-        let capable = providers.compactMap { $0 as? any ArtworkProvider }
-        if capable.isEmpty {
-            Log.artwork.error(
-                "no artwork-capable provider among \(self.providers.count, privacy: .public) — this can only return an empty set"
-            )
-        }
-        var byProvider: [Provider: ArtworkSet] = [:]
-        var failures: [Provider: String] = [:]
-
-        await withTaskGroup(of: (Provider, Result<ArtworkSet?, any Error>).self) { group in
-            for provider in capable {
-                group.addTask {
-                    do {
-                        try Task.checkCancellation()
-                        return (provider.provider, .success(try await provider.artwork(for: ids, kind: kind, nativeSeason: nativeSeason)))
-                    }
-                    catch { return (provider.provider, .failure(error)) }
-                }
-            }
-            for await (provider, result) in group {
-                switch result {
-                case .success(let set): if let set { byProvider[provider] = set }
-                case .failure(let error): failures[provider] = Log.describeFailure(error)
-                }
-            }
-        }
-
-        var merged = ArtworkSet(failures: failures)
-        for provider in byProvider.keys.sorted(by: { (rank($0), $0.rawValue) < (rank($1), $1.rawValue) }) {
-            if let set = byProvider[provider] { merged.merge(set) }
-        }
-        Log.artwork.notice(
-            """
-            \(Log.describe(ids), privacy: .public)\
-            \(nativeSeason.map { " season \($0)" } ?? "", privacy: .public) — \
-            \(merged.posters.count, privacy: .public) posters, \
-            \(merged.backdrops.count, privacy: .public) backdrops, \
-            \(merged.logos.count, privacy: .public) logos
-            """
-        )
-        return merged
-    }
-
     func assemble(_ snapshots: [Provider: Snapshot], failures: [Provider: String] = [:]) -> TitleMetadata {
         var failures = failures
         var accepted: [Provider: Snapshot] = [:]
@@ -319,6 +210,7 @@ public struct MetadataAggregator: Sendable {
         result.lastEpisodeAirDate = field(.lastEpisodeAirDate, snapshots) { $0.lastEpisodeAirDate }
         result.homeReleaseDate = field(.homeReleaseDate, snapshots) { $0.homeReleaseDate }
         result.trailerYouTubeID = field(.trailerYouTubeID, snapshots) { $0.trailerYouTubeID }
+        result.artwork = field(.artwork, snapshots) { $0.artwork }
 
         result.searchNames = sorted(snapshots, by: priority).flatMap(\.1.searchNames).deduplicatedNames
         return result
@@ -342,8 +234,6 @@ public struct MetadataAggregator: Sendable {
             (rank(lhs.key, in: order), lhs.key.rawValue) < (rank(rhs.key, in: order), rhs.key.rawValue)
         }
     }
-
-    func rank(_ provider: Provider) -> Int { rank(provider, in: priority) }
 
     private func rank(_ provider: Provider, in order: [Provider]) -> Int {
         order.firstIndex(of: provider) ?? order.count

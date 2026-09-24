@@ -25,17 +25,16 @@
 		5C357BD14116CF1C20232711 /* TMDBProvider+Browsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F1F488A46015359521BB86 /* TMDBProvider+Browsing.swift */; };
 		5FD337E0B00AF87298617332 /* Candidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F359C8389EA7A6CD5B85750A /* Candidate.swift */; };
 		61C8ADC7E0AD92C169135F4C /* Artwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70107CA0E07008DC07D1E6F9 /* Artwork.swift */; };
-		61E13DE8BDD5A18D56280551 /* ImprovementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 714889777D14EDA30B47D9A7 /* ImprovementTests.swift */; };
 		6307626A84004AB684B9B364 /* Slate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 531EA2FCE5A1D0995C88419D /* Slate.framework */; };
 		643278D9B300B4F77F32255C /* RatingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D429E18E23C3D250D0307DBB /* RatingsTests.swift */; };
 		7BDDC2DBB44964B4908DBFEB /* TMDBProvider+Seasons.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2381186A29D0D21E2114309 /* TMDBProvider+Seasons.swift */; };
 		7E27888D0011CCDB4DC9B884 /* Provenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE670B46CD419E8495AA2B51 /* Provenance.swift */; };
 		839C69500BF9DDEEF10DA3FB /* AniListProvider+Charts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808D316C8AD2C078B5C82C5A /* AniListProvider+Charts.swift */; };
-		874371A2FB771E76999615D9 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA6EBD6DAB73E9E7D10DBF04 /* StubURLProtocol.swift */; };
 		87D3239D89F2AB1123CF87F0 /* ArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFB45A4E315C83C15D7F9A11 /* ArtworkTests.swift */; };
 		8B327E7FF80D07C0BD74B674 /* Seasons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AA2E238AAA5020D6A79C87C /* Seasons.swift */; };
 		BE19AB8DFEDE6121E39BD8FA /* Lists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60131721F4F6BF4CA8C272FF /* Lists.swift */; };
 		C04B40E417E31431A89ADF93 /* AnimeIDBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E404D7B5CD8A19DF18073F /* AnimeIDBridge.swift */; };
+		C0C9D947F732A787DA32794E /* Stub.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD1D1FC84F4C55F52F4E8720 /* Stub.swift */; };
 		C23CCCBB7E3A3201A80694AD /* Trailer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7CA1FD28A475E4B4D6481C /* Trailer.swift */; };
 		CE10A56979046BCCCA1DEED5 /* CastMember.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F702FCF0146CEBAB439BD38 /* CastMember.swift */; };
 		CF1709DA8197EC9B7FA3500A /* TMDBRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A06807F1DC7E04B14534386 /* TMDBRequestTests.swift */; };
@@ -45,7 +44,6 @@
 		E4052F9505E84804ABDCB6B7 /* Slate.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 531EA2FCE5A1D0995C88419D /* Slate.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E6B68203D66D5EBB54220AC3 /* TitleMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF1D431C00DCC054D442CE0 /* TitleMetadata.swift */; };
 		F74A82765FED62E7520B1666 /* AggregationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2576F23ED564B181918D8A5F /* AggregationTests.swift */; };
-		F88CBE6BC64B1CB1D3F9248D /* ReviewFixesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9EBC665A669B481BA2D116D /* ReviewFixesTests.swift */; };
 		FA931C7F6E5D8C8CE31629A5 /* MetadataAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4C8F58501569C7083F5C2A7 /* MetadataAggregator.swift */; };
 /* End PBXBuildFile section */
 
@@ -91,7 +89,6 @@
 		60131721F4F6BF4CA8C272FF /* Lists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lists.swift; sourceTree = "<group>"; };
 		60313EB629FE06391840AAFE /* Rating.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rating.swift; sourceTree = "<group>"; };
 		70107CA0E07008DC07D1E6F9 /* Artwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artwork.swift; sourceTree = "<group>"; };
-		714889777D14EDA30B47D9A7 /* ImprovementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImprovementTests.swift; sourceTree = "<group>"; };
 		7DED1AC1F5DE65DF0AC66F6D /* TMDBProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TMDBProvider.swift; sourceTree = "<group>"; };
 		808D316C8AD2C078B5C82C5A /* AniListProvider+Charts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AniListProvider+Charts.swift"; sourceTree = "<group>"; };
 		8AA2E238AAA5020D6A79C87C /* Seasons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Seasons.swift; sourceTree = "<group>"; };
@@ -104,10 +101,9 @@
 		C266F0A14CA6E8534553A162 /* BrowsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingTests.swift; sourceTree = "<group>"; };
 		C49697EE6FE296538D59DF5A /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 		C8A85F4121E3F47DF26C6257 /* LoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoggingTests.swift; sourceTree = "<group>"; };
-		CA6EBD6DAB73E9E7D10DBF04 /* StubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubURLProtocol.swift; sourceTree = "<group>"; };
 		D429E18E23C3D250D0307DBB /* RatingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingsTests.swift; sourceTree = "<group>"; };
 		D4C8F58501569C7083F5C2A7 /* MetadataAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataAggregator.swift; sourceTree = "<group>"; };
-		D9EBC665A669B481BA2D116D /* ReviewFixesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewFixesTests.swift; sourceTree = "<group>"; };
+		DD1D1FC84F4C55F52F4E8720 /* Stub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stub.swift; sourceTree = "<group>"; };
 		DE670B46CD419E8495AA2B51 /* Provenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provenance.swift; sourceTree = "<group>"; };
 		E1AA913D80D28E4181B6DFA0 /* SlateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SlateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E2381186A29D0D21E2114309 /* TMDBProvider+Seasons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TMDBProvider+Seasons.swift"; sourceTree = "<group>"; };
@@ -137,13 +133,11 @@
 				41ACCF186E8C59E507683583 /* BridgeAndCacheTests.swift */,
 				C266F0A14CA6E8534553A162 /* BrowsingTests.swift */,
 				289A038911921BDAAD01F595 /* HTTPTests.swift */,
-				714889777D14EDA30B47D9A7 /* ImprovementTests.swift */,
 				C8A85F4121E3F47DF26C6257 /* LoggingTests.swift */,
 				D429E18E23C3D250D0307DBB /* RatingsTests.swift */,
 				347E9D7D301B47FB0E46D71F /* ReliabilityTests.swift */,
-				D9EBC665A669B481BA2D116D /* ReviewFixesTests.swift */,
 				22350F2A51522318C87DEB5E /* SeasonTests.swift */,
-				CA6EBD6DAB73E9E7D10DBF04 /* StubURLProtocol.swift */,
+				DD1D1FC84F4C55F52F4E8720 /* Stub.swift */,
 				4A06807F1DC7E04B14534386 /* TMDBRequestTests.swift */,
 			);
 			name = SlateTests;
@@ -290,13 +284,11 @@
 				402C39AA4E540D868073E523 /* BridgeAndCacheTests.swift in Sources */,
 				D2E6FCDE4D0D5AC219F7E773 /* BrowsingTests.swift in Sources */,
 				2404C53BF24F526907710AC8 /* HTTPTests.swift in Sources */,
-				61E13DE8BDD5A18D56280551 /* ImprovementTests.swift in Sources */,
 				09E9DB604CA001C3A1D79428 /* LoggingTests.swift in Sources */,
 				643278D9B300B4F77F32255C /* RatingsTests.swift in Sources */,
 				DCC5D2E078179A617A0608AE /* ReliabilityTests.swift in Sources */,
-				F88CBE6BC64B1CB1D3F9248D /* ReviewFixesTests.swift in Sources */,
 				0517AA82BFA63888FA6BDB59 /* SeasonTests.swift in Sources */,
-				874371A2FB771E76999615D9 /* StubURLProtocol.swift in Sources */,
+				C0C9D947F732A787DA32794E /* Stub.swift in Sources */,
 				CF1709DA8197EC9B7FA3500A /* TMDBRequestTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

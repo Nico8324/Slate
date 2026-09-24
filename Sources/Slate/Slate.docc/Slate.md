@@ -9,9 +9,10 @@ id; it asks every provider it has at once and returns one ``TitleMetadata`` in
 which every field carries both a value and the provider that supplied it.
 
 ```swift
+let tmdb = TMDBProvider(accessToken: token)
 let slate = MetadataAggregator(providers: [
     AniListProvider(),
-    TMDBProvider(accessToken: token),
+    tmdb,
     // ``AnimeIDBridge`` and ``MDBListProvider`` are opt-in and in no default
     // set. A provider left out of this list is never asked, and nothing
     // reports its absence.
@@ -62,12 +63,11 @@ A series is not described by an episode count. TMDB files Bleach as one season o
 366 episodes; everybody else counts arcs, and a library filed the flat way lines
 up with nothing a person reads or downloads.
 
-``MetadataAggregator/seasons(for:)`` asks **TMDB only**, whatever else is in
-`providers` — the correction comes out of TMDB's episode groups and has no
-equivalent elsewhere.
+``TMDBProvider/seasons(for:kind:)`` is TMDB's alone — the correction comes out
+of TMDB's episode groups and has no equivalent elsewhere.
 
 ```swift
-let structure = await slate.seasons(for: result.ids)
+let structure = try await tmdb.seasons(for: result.ids, kind: .series)
 structure?.ordering                  // .episodeGroup(name: "TVDB Order")
 structure?.position(ofAbsolute: 340) // "Bleach - 340" → S14E7
 ```
@@ -90,8 +90,8 @@ A show has forty posters in a dozen languages, and which one is right depends on
 who is looking.
 
 ```swift
-let art = await slate.artwork(for: result.ids, kind: .series)
-art.best(.poster, preferring: ["fr", "en"])
+let art = try await tmdb.artwork(for: result.ids, kind: .series)
+art?.best(.poster, preferring: ["fr", "en"])
 art.best(.backdrop)   // textless, for behind a title
 ```
 
@@ -276,7 +276,6 @@ other providers still answer. Direct provider calls throw.
 - ``ArtworkSet``
 - ``Artwork``
 - ``ArtworkKind``
-- ``ArtworkProvider``
 
 ### Seasons
 

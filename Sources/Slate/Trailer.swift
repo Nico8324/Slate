@@ -6,9 +6,19 @@ import Foundation
 /// English and four from its French distributor, dubbed and subtitled. Which one
 /// is right depends on who is watching, so Slate returns all of them and
 /// ``Swift/Array/best(preferring:)`` chooses — the same shape as ``ArtworkSet``.
-public struct Trailer: Sendable, Equatable, Identifiable {
-    public enum Kind: String, Sendable, Hashable {
+public struct Trailer: Sendable, Equatable, Identifiable, Codable {
+    public enum Kind: String, Sendable, Hashable, Codable {
         case trailer, teaser, clip, featurette, behindTheScenes, other
+    }
+
+    /// Which version a viewer wants.
+    public enum Version: String, Sendable, Hashable, CaseIterable, Codable {
+        /// The studio's own, in the title's language.
+        case original
+        /// Original audio with subtitles in the viewer's language.
+        case subtitled
+        /// Dubbed into the viewer's language.
+        case dubbed
     }
 
     /// The YouTube video id — what a player wants, not a URL.
@@ -28,6 +38,13 @@ public struct Trailer: Sendable, Equatable, Identifiable {
     public let publishedAt: Date?
 
     public var id: String { youTubeID }
+
+    /// Whether ``name`` says it is subtitled (`VOSTFR`, `sous-titré`, `Subtitled`).
+    /// Providers tag a subtitled trailer and a dub with the same language.
+    public var isSubtitled: Bool {
+        let name = name?.lowercased() ?? ""
+        return ["vost", "sous-titr", "subtitled"].contains { name.contains($0) }
+    }
 
     public init(
         youTubeID: String, name: String? = nil, kind: Kind, language: String? = nil,
@@ -71,10 +88,43 @@ extension Array where Element == Trailer {
         return self.min { lhs, rhs in
             if kindRank(lhs) != kindRank(rhs) { return kindRank(lhs) < kindRank(rhs) }
             if languageRank(lhs) != languageRank(rhs) { return languageRank(lhs) < languageRank(rhs) }
-            if lhs.isOfficial != rhs.isOfficial { return lhs.isOfficial }
-            let (l, r) = (lhs.publishedAt ?? .distantPast, rhs.publishedAt ?? .distantPast)
-            if l != r { return l > r }
-            return lhs.youTubeID < rhs.youTubeID
+            return Self.before(lhs, rhs)
         }
+    }
+
+    /// The one to play in `version`, falling back to the closest one there is.
+    ///
+    /// The original is in `originalLanguage` (English when unknown), else English.
+    /// Subtitled and dubbed are in the `viewer`'s language, told apart by
+    /// ``Trailer/isSubtitled``; a viewer whose language is the original's gets the
+    /// original. Subtitled falls back to the original; dubbed to subtitled, then
+    /// the original. Within each, a trailer beats a teaser, official beats not,
+    /// and the newest wins.
+    ///
+    /// - Parameters:
+    ///   - originalLanguage: ISO 639-1 of the title, such as ``Snapshot/originalLanguage``.
+    ///   - viewer: ISO 639-1 or a full tag (`fr`, `fr-FR`).
+    public func best(version: Trailer.Version, originalLanguage: String?, viewer: String) -> Trailer? {
+        func rank(_ trailer: Trailer) -> Int { trailer.kind == .trailer ? 0 : trailer.kind == .teaser ? 1 : 2 }
+        let ranked = sorted { lhs, rhs in rank(lhs) != rank(rhs) ? rank(lhs) < rank(rhs) : Self.before(lhs, rhs) }
+        let viewer = viewer.split(separator: "-").first.map { String($0).lowercased() } ?? viewer
+        let original = ranked.first { $0.language == (originalLanguage ?? "en") } ?? ranked.first { $0.language == "en" }
+        let local = ranked.filter { $0.language == viewer && viewer != originalLanguage }
+        let subtitled = local.first(where: \.isSubtitled)
+        let dubbed = local.first { !$0.isSubtitled }
+        let pick: Trailer? = switch version {
+        case .original: original
+        case .subtitled: subtitled ?? original
+        case .dubbed: dubbed ?? subtitled ?? original
+        }
+        return pick ?? ranked.first
+    }
+
+    /// Official first, then the newest; the id settles the rest so every call agrees.
+    private static func before(_ lhs: Trailer, _ rhs: Trailer) -> Bool {
+        if lhs.isOfficial != rhs.isOfficial { return lhs.isOfficial }
+        let (l, r) = (lhs.publishedAt ?? .distantPast, rhs.publishedAt ?? .distantPast)
+        if l != r { return l > r }
+        return lhs.youTubeID < rhs.youTubeID
     }
 }

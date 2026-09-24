@@ -22,6 +22,8 @@ public struct Candidate: Sendable, Equatable, Identifiable {
     public let originalLanguage: String?
     /// The provider's genre ids — TMDB's, which ``TMDBProvider/genres(of:)`` names.
     public let genreIDs: [Int]
+    /// TMDB's popularity score, where the list gives it.
+    public let popularity: Double?
     public let provider: Provider
 
     /// With the kind: TMDB numbers films and shows separately, and a film and
@@ -37,7 +39,7 @@ public struct Candidate: Sendable, Equatable, Identifiable {
         ids: Identifiers, kind: Kind, title: String, year: Int? = nil, releaseDate: Date? = nil,
         releasePrecision: DatePrecision? = nil,
         posterURL: URL? = nil, backdropURL: URL? = nil, originalLanguage: String? = nil,
-        genreIDs: [Int] = [], provider: Provider
+        genreIDs: [Int] = [], popularity: Double? = nil, provider: Provider
     ) {
         self.ids = ids
         self.kind = kind
@@ -49,6 +51,7 @@ public struct Candidate: Sendable, Equatable, Identifiable {
         self.backdropURL = backdropURL
         self.originalLanguage = originalLanguage
         self.genreIDs = genreIDs
+        self.popularity = popularity
         self.provider = provider
     }
 }

@@ -114,3 +114,13 @@ struct RetryAfterTests {
         #expect(HTTP.retryAfter(response("600")) == 60)
     }
 }
+
+struct ArtworkRankTests {
+    @Test func artworkWithNoLanguageOrRatingRanksLast() throws {
+        let banner = Artwork(kind: .backdrop, url: URL(string: "https://a.invalid/banner.jpg")!, provider: .aniList)
+        let backdrop = Artwork(kind: .backdrop, url: URL(string: "https://t.invalid/b.jpg")!,
+                               language: "en", rating: 0, provider: .tmdb)
+        let set = ArtworkSet(backdrops: [banner, backdrop])
+        #expect(set.best(.backdrop)?.provider == .tmdb)
+    }
+}

@@ -123,19 +123,3 @@ public struct ArtworkSet: Sendable, Equatable {
         failures.merge(other.failures) { first, _ in first }
     }
 }
-
-/// A provider that can also supply pictures.
-///
-/// Separate from ``MetadataProvider`` for the same reason seasons are a separate
-/// call: it is another request, and a caller asking *what is this* should not
-/// pay for forty image records it did not ask for.
-public protocol ArtworkProvider: MetadataProvider {
-    /// - Parameter ids: Identifiers for the title whose artwork is requested.
-    /// - Parameter kind: Whether the title is a movie or a series.
-    /// - Parameter nativeSeason: the **provider's own** season number, not one
-    ///   from a corrected ``SeasonStructure``. Translate first with
-    ///   ``SeasonStructure/nativeSeason(ofSeason:)``: Bleach's arc season 2 lives
-    ///   inside TMDB's season 1, and passing 2 straight through returns the
-    ///   posters for Thousand-Year Blood War.
-    func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int?) async throws -> ArtworkSet?
-}

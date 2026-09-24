@@ -2,19 +2,16 @@ import Foundation
 import Testing
 @testable import Slate
 
-private func mdbList() -> MDBListProvider {
-    MDBListProvider(apiKey: "test-key", session: StubURLProtocol.session)
-}
-
-// Nested in the serialized suite that owns the stub table: sibling suites run in
-// parallel and race each other's routes.
 extension TMDBRequestTests {
-  @Suite(.serialized)
   struct Ratings {
+    let stub = Stub()
+
+    private func mdbList() -> MDBListProvider {
+        MDBListProvider(apiKey: "test-key", transport: stub.transport)
+    }
 
     @Test func everySiteIsKeptSeparatelyOnItsOwnScale() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/imdb/movie/tt0133093", json: """
+        stub.stub("/imdb/movie/tt0133093", json: """
         {"imdb_id":"tt0133093","title":"The Matrix","type":"movie","score":88,
          "ratings":[{"source":"imdb","value":8.7,"votes":2000000},
                     {"source":"metacritic","value":73},
@@ -39,8 +36,7 @@ extension TMDBRequestTests {
     /// Trakt and TMDB send percentages and Metacritic's users score out of ten; a table that
     /// assumed ten for everything unlisted read Trakt's 85 as 85 out of 10.
     @Test func sitesOutsideTheOldTableLandOnTheirOwnScales() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/imdb/movie/tt0133094", json: """
+        stub.stub("/imdb/movie/tt0133094", json: """
         {"imdb_id":"tt0133094","title":"X","type":"movie",
          "ratings":[{"source":"trakt","value":85},
                     {"source":"metacriticuser","value":8.9},
@@ -59,8 +55,7 @@ extension TMDBRequestTests {
     @Test func theBlendedScoreIsNotReportedAsARating() async throws {
         // MDBList's own `score` is an average of the sites it lists. Reporting
         // it would put an average where a source belongs.
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/imdb/movie/tt1", json: """
+        stub.stub("/imdb/movie/tt1", json: """
         {"imdb_id":"tt1","score":88,"ratings":[{"source":"imdb","value":8.7}]}
         """)
 
@@ -70,8 +65,7 @@ extension TMDBRequestTests {
     }
 
     @Test func aSiteWithNoScoreIsDroppedRatherThanScoredZero() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/imdb/movie/tt2", json: """
+        stub.stub("/imdb/movie/tt2", json: """
         {"imdb_id":"tt2","ratings":[{"source":"imdb","value":7.1},
                                     {"source":"letterboxd","value":null},
                                     {"source":"tomatoes","value":0}]}
@@ -82,11 +76,10 @@ extension TMDBRequestTests {
     }
 
     @Test func withoutAnIDItAsksNothingRatherThanSearching() async throws {
-        StubURLProtocol.reset()
         // MDBList has no title search, so a name-only lookup is unanswerable.
         #expect(MDBListProvider.route(for: Lookup(search: "The Matrix", kind: .movie)) == nil)
         #expect(try await mdbList().snapshot(for: Lookup(search: "The Matrix", kind: .movie)) == nil)
-        #expect(StubURLProtocol.requested.isEmpty, "and it made no request to find that out")
+        #expect(stub.requested.isEmpty, "and it made no request to find that out")
     }
 
     @Test func idRoutesPreferIMDbThenTMDB() {
@@ -99,16 +92,15 @@ extension TMDBRequestTests {
     }
 
     @Test func anIDOnlyProviderIsAskedAgainOnceTheIDsAreKnown() async throws {
-        StubURLProtocol.reset()
         // A search by name: TMDB finds the id, MDBList could not have.
-        StubURLProtocol.stub("/search/movie", json: #"{"results":[{"id":603,"title":"The Matrix","popularity":9}]}"#)
-        StubURLProtocol.stub("/movie/603", json: #"{"id":603,"imdb_id":"tt0133093","title":"The Matrix"}"#)
-        StubURLProtocol.stub("/imdb/movie/tt0133093", json: """
+        stub.stub("/search/movie", json: #"{"results":[{"id":603,"title":"The Matrix","popularity":9}]}"#)
+        stub.stub("/movie/603", json: #"{"id":603,"imdb_id":"tt0133093","title":"The Matrix"}"#)
+        stub.stub("/imdb/movie/tt0133093", json: """
         {"imdb_id":"tt0133093","ratings":[{"source":"imdb","value":8.7}]}
         """)
 
         let slate = MetadataAggregator(providers: [
-            TMDBProvider(accessToken: "t", session: StubURLProtocol.session),
+            TMDBProvider(accessToken: "t", transport: stub.transport),
             mdbList(),
         ])
         let result = await slate.metadata(for: Lookup(search: "The Matrix", kind: .movie))
@@ -119,24 +111,22 @@ extension TMDBRequestTests {
     }
 
     @Test func theSecondPassDoesNotHappenWhenNothingNewWasLearned() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/imdb/movie/tt5", json: #"{"imdb_id":"tt5","ratings":[{"source":"imdb","value":6}]}"#)
+        stub.stub("/imdb/movie/tt5", json: #"{"imdb_id":"tt5","ratings":[{"source":"imdb","value":6}]}"#)
 
         let slate = MetadataAggregator(providers: [mdbList()])
         _ = await slate.metadata(for: Lookup(imdbID: "tt5", kind: .movie))
 
-        #expect(StubURLProtocol.requested.count == 1, "the id was known from the start")
+        #expect(stub.requested.count == 1, "the id was known from the start")
     }
 
     @Test func theKeyRidesAsTheOnlyFormMDBListAcceptsAndStaysOutOfLogs() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("/imdb/movie/tt6", json: #"{"imdb_id":"tt6"}"#)
+        stub.stub("/imdb/movie/tt6", json: #"{"imdb_id":"tt6"}"#)
         _ = try? await mdbList().snapshot(for: Lookup(imdbID: "tt6", kind: .movie))
 
         // MDBList takes an API key only as `?apikey=`. Its `Authorization: Bearer`
         // is for OAuth tokens, and a real key sent that way was answered with 401:
         // this test used to require the opposite, and passed while nothing worked.
-        let url = try #require(StubURLProtocol.requested.first)
+        let url = try #require(stub.requested.first)
         #expect(url.query?.contains("apikey=test-key") == true)
         #expect(!Log.redactingQuery(url).contains("test-key"), "what the log prints has no query string")
     }
@@ -144,7 +134,6 @@ extension TMDBRequestTests {
 }
 
 extension TMDBRequestTests {
-  @Suite(.serialized)
   struct MergedRatings {
     private func assembled() -> TitleMetadata {
         MetadataAggregator(providers: []).assemble([
@@ -171,4 +160,41 @@ extension TMDBRequestTests {
                 "MDBList outranks TMDB for this field, so its spelling of the shared source wins")
     }
   }
+}
+
+struct MDBListChartTests {
+    let stub = Stub()
+
+    @Test func officialListsReadTheAskedKindInRankOrder() async throws {
+        stub.respond { request in
+            // MDBList takes an API key only as `?apikey=`; `Bearer` is for OAuth
+            // tokens and answered a real key with 401.
+            #expect(request.url?.query?.contains("apikey=key") == true)
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+            #expect(request.url?.path == "/lists/official/moviemeter/items")
+            #expect(request.url?.query?.contains("mediatype=movie") == true)
+            return .init(body: """
+            {"movies":[
+              {"rank":2,"title":"Tenet","release_year":2020,"imdb_id":"tt6723592","ids":{"imdb":"tt6723592","tmdb":577922}},
+              {"rank":1,"title":"The Housemaid","release_year":2025,"imdb_id":"tt27543632","ids":{"tmdb":1368166},"poster":"https://image.tmdb.org/t/p/w500/p.jpg"},
+              {"rank":3,"title":"No ids","release_year":2025}],
+             "shows":[{"rank":1,"title":"Tulsa King","imdb_id":"tt16358384"}],
+             "pagination":{"next_cursor":"abc"}}
+            """)
+        }
+        let mdbList = MDBListProvider(apiKey: "key", transport: stub.transport)
+        let page = try await mdbList.titles(in: .imdbMovieMeter, kind: .movie)
+
+        #expect(page.titles.map(\.title) == ["The Housemaid", "Tenet"], "rank order; a row nothing can look up is dropped")
+        #expect(page.titles.first?.ids == Identifiers(imdb: "tt27543632", tmdb: 1368166))
+        #expect(page.titles.first?.posterURL != nil)
+        #expect(page.titles.first?.provider == .mdbList)
+        #expect(page.nextCursor == "abc")
+    }
+
+    @Test func officialListsWithoutAKeySaySo() async {
+        await #expect(throws: SlateError.missingCredential(.mdbList)) {
+            try await MDBListProvider(apiKey: "", transport: stub.transport).titles(in: .trending, kind: .series)
+        }
+    }
 }

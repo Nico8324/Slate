@@ -1,6 +1,6 @@
 import Foundation
 
-extension TMDBProvider: ArtworkProvider {
+extension TMDBProvider {
 
     /// Every poster, backdrop and logo TMDB holds, in every language.
     ///
@@ -43,11 +43,7 @@ extension TMDBProvider: ArtworkProvider {
         let payload = try await http.json(Images.self,
                                           url: try URL.build(Self.api, path: path),
                                           headers: headers)
-        return ArtworkSet(
-            posters: payload.posters?.compactMap { $0.artwork(.poster) } ?? [],
-            backdrops: payload.backdrops?.compactMap { $0.artwork(.backdrop) } ?? [],
-            logos: payload.logos?.compactMap { $0.artwork(.logo) } ?? []
-        )
+        return payload.artworkSet
     }
 
     struct Images: Decodable {
@@ -77,32 +73,13 @@ extension TMDBProvider: ArtworkProvider {
         var posters: [Item]?
         var backdrops: [Item]?
         var logos: [Item]?
-    }
-}
 
-extension AniListProvider: ArtworkProvider {
-    /// AniList's cover, which is the image anime viewers recognise — TMDB
-    /// frequently holds a different one, or a poster for the wrong cour.
-    ///
-    /// No language or rating on either image, so there is nothing here to choose
-    /// between; they join the set and ``ArtworkSet/best(_:preferring:)`` ranks
-    /// them below anything TMDB can describe.
-    ///
-    /// - Parameter ids: Identifiers for the title whose artwork is requested.
-    /// - Parameter kind: Whether the title is a movie or a series.
-    /// - Parameter nativeSeason: AniList files each cour as its own entry and
-    ///   holds no season-level art, so anything but `nil` returns `nil` rather
-    ///   than a title-level image standing in for a season's.
-    public func artwork(for ids: Identifiers, kind: Kind, nativeSeason: Int? = nil) async throws -> ArtworkSet? {
-        try Task.checkCancellation()
-        try Lookup(ids: ids, season: nativeSeason).validate()
-        guard nativeSeason == nil, let id = ids.aniList else { return nil }
-        guard let snapshot = try await snapshot(for: Lookup(ids: Identifiers(aniList: id))) else {
-            return nil
+        var artworkSet: ArtworkSet {
+            ArtworkSet(
+                posters: posters?.compactMap { $0.artwork(.poster) } ?? [],
+                backdrops: backdrops?.compactMap { $0.artwork(.backdrop) } ?? [],
+                logos: logos?.compactMap { $0.artwork(.logo) } ?? []
+            )
         }
-        return ArtworkSet(
-            posters: snapshot.posterURL.map { [Artwork(kind: .poster, url: $0, provider: .aniList)] } ?? [],
-            backdrops: snapshot.backdropURL.map { [Artwork(kind: .backdrop, url: $0, provider: .aniList)] } ?? []
-        )
     }
 }

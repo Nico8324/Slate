@@ -30,6 +30,45 @@ extension TMDBProvider {
                                     query: ["query": query, "page": String(page)])
     }
 
+    /// ``candidates(for:kind:page:)``, and when that finds nothing, the titles a few
+    /// letters from `query` — "inceptoin" finds Inception — with the title found
+    /// instead as `correction`.
+    public func candidates(
+        correcting query: String, kind: Kind? = nil
+    ) async throws -> (results: [Candidate], correction: String?) {
+        var results = try await candidates(for: query, kind: kind)
+        var correction: String?
+        if results.isEmpty {
+            var near: [Candidate] = []
+            for nearby in Self.nearbyQueries(query) {
+                near += (try? await candidates(for: nearby, kind: kind)) ?? []
+            }
+            try Task.checkCancellation()
+            // TMDB's order is its relevance, which ranks the likely title first.
+            results = Self.closeMatches(near, to: query, name: \.title)
+            correction = results.first?.title
+        }
+        var seen = Set<String>()
+        return (results.filter { seen.insert($0.id).inserted }, correction)
+    }
+
+    /// A title's card — localized title, art, genre ids, language, popularity —
+    /// without the details request: the bare `/movie` or `/tv` page by TMDB id,
+    /// else `/find` by IMDb id. `nil` when TMDB holds no `kind` under the id.
+    public func candidate(for ids: Identifiers, kind: Kind) async throws -> Candidate? {
+        try Lookup(ids: ids).validate()
+        guard !accessToken.isEmpty else { throw SlateError.missingCredential(.tmdb) }
+        if let id = ids.tmdb {
+            let url = try URL.build(Self.api, path: kind == .movie ? "/movie/\(id)" : "/tv/\(id)",
+                                    query: ["language": language])
+            return try await http.json(CandidateResponse.Hit.self, url: url, headers: headers)
+                .candidate(assuming: kind, imdb: ids.imdb)
+        }
+        guard let imdb = ids.imdb else { return nil }
+        let found = try await findByIMDb(imdb)
+        return (kind == .movie ? found.movie_results : found.tv_results).first?.candidate(assuming: kind, imdb: imdb)
+    }
+
     /// One of TMDB's published lists.
     ///
     /// Scoped to ``TMDBProvider``'s `region`. "Now playing" and "upcoming" are
@@ -161,6 +200,72 @@ extension TMDBProvider {
             }
     }
 
+    /// ``searchPeople(_:page:)``, and when nobody carries a two-word name exactly,
+    /// the people a few letters from it first — "sidney sweeney" finds Sydney
+    /// Sweeney — with the name found instead as `correction`.
+    public func searchPeople(correcting query: String) async throws -> (results: [Person], correction: String?) {
+        var people = try await searchPeople(query)
+        var correction: String?
+        // One word of a name can match other people, so a correction is looked for
+        // whenever nobody carries the name exactly.
+        if query.contains(" "), !people.contains(where: { Self.distance($0.name, query) == 0 }) {
+            var near: [Person] = []
+            for nearby in Self.nearbyQueries(query) {
+                near += (try? await searchPeople(nearby)) ?? []
+            }
+            try Task.checkCancellation()
+            let close = Self.closeMatches(near, to: query, name: \.name)
+                .sorted { ($0.popularity ?? 0) > ($1.popularity ?? 0) }
+            if let best = close.first {
+                correction = best.name
+                people = close + people
+            }
+        }
+        var seen = Set<Int>()
+        return (people.filter { seen.insert($0.id).inserted }, correction)
+    }
+
+    /// What to search when a query finds nothing close: its two longest words when
+    /// there are several, and their beginnings, which TMDB matches — "incep" finds
+    /// Inception. Three at most.
+    static func nearbyQueries(_ query: String) -> [String] {
+        let words = query.split(separator: " ").map(String.init).filter { $0.count >= 4 }
+            .sorted { $0.count > $1.count }.prefix(2)
+        var queries: [String] = []
+        for word in words {
+            if words.count > 1 { queries.append(word) }
+            let beginning = String(word.prefix(max(3, word.count * 3 / 5)))
+            if beginning != word { queries.append(beginning) }
+        }
+        var seen = Set<String>()
+        return Array(queries.filter { seen.insert($0.lowercased()).inserted }.prefix(3))
+    }
+
+    /// The items whose name is within two edits of `query`, or a sixth of a long one.
+    static func closeMatches<Item>(_ items: [Item], to query: String, name: (Item) -> String) -> [Item] {
+        let allowed = max(2, query.count / 6)
+        return items.filter { distance(name($0), query) <= allowed }
+    }
+
+    /// Levenshtein distance, ignoring case and accents.
+    static func distance(_ a: String, _ b: String) -> Int {
+        let fold = { (s: String) in Array(s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)) }
+        let (x, y) = (fold(a), fold(b))
+        guard !x.isEmpty else { return y.count }
+        guard !y.isEmpty else { return x.count }
+        var row = Array(0...y.count)
+        for i in 1...x.count {
+            var diagonal = row[0]
+            row[0] = i
+            for j in 1...y.count {
+                let above = row[j]
+                row[j] = min(above + 1, row[j - 1] + 1, diagonal + (x[i - 1] == y[j - 1] ? 0 : 1))
+                diagonal = above
+            }
+        }
+        return row[y.count]
+    }
+
     // MARK: - Shared
 
     private func candidates(path: String, kind: Kind?, query: [String: String?]) async throws -> [Candidate] {
@@ -189,8 +294,12 @@ extension TMDBProvider {
             var backdrop_path: String?
             var original_language: String?
             var genre_ids: [Int]?
+            /// A title's own page lists `genres`, not `genre_ids`.
+            var genres: [GenreList.Entry]?
+            var popularity: Double?
+            var imdb_id: String?
 
-            func candidate(assuming kind: Kind?) -> Candidate? {
+            func candidate(assuming kind: Kind?, imdb: String? = nil) -> Candidate? {
                 let resolved: Kind? = switch media_type {
                 case "movie": .movie
                 case "tv": .series
@@ -201,11 +310,12 @@ extension TMDBProvider {
                 guard let resolved, let title = (title ?? name)?.nilIfEmpty else { return nil }
                 let date = release_date ?? first_air_date
                 return Candidate(
-                    ids: Identifiers(tmdb: id), kind: resolved, title: title,
+                    ids: Identifiers(imdb: imdb ?? imdb_id, tmdb: id), kind: resolved, title: title,
                     year: date.flatMap { Int($0.prefix(4)) }, releaseDate: date?.asReleaseDate,
                     posterURL: TMDBProvider.imageURL(poster_path),
                     backdropURL: TMDBProvider.imageURL(backdrop_path),
-                    originalLanguage: original_language, genreIDs: genre_ids ?? [], provider: .tmdb
+                    originalLanguage: original_language, genreIDs: genre_ids ?? genres?.map(\.id) ?? [],
+                    popularity: popularity, provider: .tmdb
                 )
             }
         }

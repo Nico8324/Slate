@@ -64,25 +64,24 @@ struct CacheReliabilityTests {
         let cache = ResponseCache(ttl: 0)
         await cache.store(Data(), for: "expired")
         #expect(await cache.data(for: "expired") == nil)
-        let provider = TMDBProvider(accessToken: "test", cacheTTL: 0)
+        let provider = TMDBProvider(accessToken: "test", cacheTTL: 0, transport: Stub().transport)
         await provider.rememberSeasons(SeasonStructure(nativeSeasons: [], provider: .tmdb), for: 1)
         #expect(await provider.cachedSeasons(for: 1) == nil)
     }
 }
 
 extension TMDBRequestTests {
-    @Suite(.serialized)
     struct Reliability {
+        let stub = Stub()
         @Test func aLanguageChangeCannotRestoreAnOlderSeasonStructure() async throws {
-            StubURLProtocol.reset()
             let gate = LoadGate()
-            StubURLProtocol.respond { request in
+            stub.respond { request in
                 if request.url?.query?.contains("language=en-US") == true {
                     return .init(body: String(decoding: await gate.load(), as: UTF8.self))
                 }
                 return .init(body: #"{"seasons":[{"season_number":1,"episode_count":12,"name":"Français"}]}"#)
             }
-            let provider = TMDBProvider(accessToken: "t", session: StubURLProtocol.session)
+            let provider = TMDBProvider(accessToken: "t", transport: stub.transport)
             let old = Task { try await provider.seasons(for: Identifiers(tmdb: 1)) }
             while !(await gate.started) { await Task.yield() }
             await provider.updateLanguage("fr-FR")
@@ -94,8 +93,7 @@ extension TMDBRequestTests {
         }
 
         @Test func animeSearchContinuesToTheNextPage() async throws {
-            StubURLProtocol.reset()
-            StubURLProtocol.respond { request in
+            stub.respond { request in
                 let body: Data
                 if let data = request.httpBody { body = data }
                 else if let stream = request.httpBodyStream {
@@ -114,91 +112,85 @@ extension TMDBRequestTests {
                 let year = second ? 1999 : 2011
                 return .init(body: "{\"data\":{\"Page\":{\"pageInfo\":{\"hasNextPage\":\(!second)},\"media\":[{\"id\":1,\"format\":\"TV\",\"startDate\":{\"year\":\(year)},\"title\":{\"romaji\":\"Hunter x Hunter\"}}]}}}")
             }
-            let result = try await AniListProvider(session: StubURLProtocol.session)
+            let result = try await AniListProvider(transport: stub.transport)
                 .snapshot(for: Lookup(search: "Hunter x Hunter", year: 1999, kind: .series))
             #expect(result?.ids.aniList == 1)
-            #expect(StubURLProtocol.requested.count == 2)
+            #expect(stub.requested.count == 2)
         }
 
         @Test func aCancelledBridgeDownloadCanBeRetried() async throws {
-            StubURLProtocol.reset()
             let gate = LoadGate()
-            StubURLProtocol.respond { _ in .init(body: String(decoding: await gate.load(), as: UTF8.self)) }
-            let bridge = AnimeIDBridge(session: StubURLProtocol.session)
+            stub.respond { _ in .init(body: String(decoding: await gate.load(), as: UTF8.self)) }
+            let bridge = AnimeIDBridge(transport: stub.transport)
             let first = Task { try await bridge.snapshot(for: Lookup(imdbID: "tt1")) }
             while !(await gate.started) { await Task.yield() }
             first.cancel()
             await #expect(throws: CancellationError.self) { _ = try await first.value }
             await gate.release("[]")
-            StubURLProtocol.respond { _ in .init(body: #"[{"imdb_id":"tt1","anilist_id":1}]"#) }
+            stub.respond { _ in .init(body: #"[{"imdb_id":"tt1","anilist_id":1}]"#) }
             #expect(try await bridge.snapshot(for: Lookup(imdbID: "tt1"))?.ids.aniList == 1)
         }
 
         @Test func credentialsArePartOfTheCacheKey() async throws {
-            StubURLProtocol.reset()
-            StubURLProtocol.respond { request in
+            stub.respond { request in
                 if request.value(forHTTPHeaderField: "Authorization") == "Bearer valid" {
                     return .init(body: #"{"id":1,"name":"X"}"#)
                 }
                 return .init(status: 401)
             }
-            let provider = TMDBProvider(accessToken: "valid", session: StubURLProtocol.session)
+            let provider = TMDBProvider(accessToken: "valid", transport: stub.transport)
             let lookup = Lookup(ids: Identifiers(tmdb: 1), kind: .series)
             _ = try await provider.snapshot(for: lookup)
             await provider.updateAPIKey("rejected")
             await #expect(throws: SlateError.missingCredential(.tmdb)) {
                 _ = try await provider.snapshot(for: lookup)
             }
-            #expect(StubURLProtocol.requested.count == 2)
+            #expect(stub.requested.count == 2)
         }
 
         @Test func clearCacheFetchesFreshResponsesAndSeasons() async throws {
-            StubURLProtocol.reset()
-            StubURLProtocol.stub("/tv/1", json: #"{"id":1,"name":"X","seasons":[{"season_number":1,"episode_count":12}]}"#)
-            let provider = TMDBProvider(accessToken: "t", session: StubURLProtocol.session)
+            stub.stub("/tv/1", json: #"{"id":1,"name":"X","seasons":[{"season_number":1,"episode_count":12}]}"#)
+            let provider = TMDBProvider(accessToken: "t", transport: stub.transport)
             _ = try await provider.seasons(for: Identifiers(tmdb: 1))
             _ = try await provider.seasons(for: Identifiers(tmdb: 1))
-            #expect(StubURLProtocol.requested.count == 1)
+            #expect(stub.requested.count == 1)
             await provider.clearCache()
             _ = try await provider.seasons(for: Identifiers(tmdb: 1))
-            #expect(StubURLProtocol.requested.count == 2)
+            #expect(stub.requested.count == 2)
         }
 
         @Test func aYearWithoutAKindCostsTwoSearchesAndFindsAShow() async throws {
             // Was up to 500 pages of `/search/multi`, filtered on the client.
-            StubURLProtocol.reset()
-            StubURLProtocol.respond { request in
+            stub.respond { request in
                 switch request.url?.path {
                 case "/3/search/movie": .init(body: #"{"results":[]}"#)
                 case "/3/search/tv": .init(body: #"{"results":[{"id":7,"name":"Dune","first_air_date":"2000-12-03"}]}"#)
                 default: .init(body: #"{"id":7,"name":"Dune"}"#)
                 }
             }
-            let provider = TMDBProvider(accessToken: "t", session: StubURLProtocol.session)
+            let provider = TMDBProvider(accessToken: "t", transport: stub.transport)
             let snapshot = try await provider.snapshot(for: Lookup(search: "Dune", year: 2000))
             #expect(snapshot?.ids.tmdb == 7)
             #expect(snapshot?.kind == .series)
-            #expect(StubURLProtocol.requested.filter { $0.path.hasPrefix("/3/search/") }.count == 2)
+            #expect(stub.requested.filter { $0.path.hasPrefix("/3/search/") }.count == 2)
         }
 
         @Test func graphQLErrorsAreFailuresAndAreNotCached() async throws {
-            StubURLProtocol.reset()
-            StubURLProtocol.stub("graphql.anilist.co", json: #"{"data":null,"errors":[{"message":"query failed"}]}"#)
-            let provider = AniListProvider(session: StubURLProtocol.session)
+            stub.stub("graphql.anilist.co", json: #"{"data":null,"errors":[{"message":"query failed"}]}"#)
+            let provider = AniListProvider(transport: stub.transport)
             for _ in 0..<2 {
                 await #expect(throws: SlateError.graphQL(.aniList)) {
                     _ = try await provider.snapshot(for: Lookup(search: "X"))
                 }
             }
-            #expect(StubURLProtocol.requested.count == 2)
+            #expect(stub.requested.count == 2)
         }
 
         @Test func identicalAnimeQueriesUseTheSameCacheKey() async throws {
-            StubURLProtocol.reset()
-            StubURLProtocol.stub("graphql.anilist.co", json: #"{"data":{"Page":{"media":[{"id":1,"title":{"romaji":"X"}}]}}}"#)
-            let provider = AniListProvider(session: StubURLProtocol.session)
+            stub.stub("graphql.anilist.co", json: #"{"data":{"Page":{"media":[{"id":1,"title":{"romaji":"X"}}]}}}"#)
+            let provider = AniListProvider(transport: stub.transport)
             for _ in 0..<5 { _ = try await provider.snapshot(for: Lookup(search: "X")) }
-            #expect(StubURLProtocol.requested.count == 1)
+            #expect(stub.requested.count == 1)
         }
     }
 }

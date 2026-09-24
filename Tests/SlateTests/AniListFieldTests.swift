@@ -3,13 +3,12 @@ import Testing
 @testable import Slate
 
 extension TMDBRequestTests {
-  @Suite(.serialized)
   struct AniListFields {
+    let stub = Stub()
 
     /// Attack on Titan's real shape, trimmed to what is asserted.
-    private func stub() {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("graphql.anilist.co", json: """
+    private func stubAttackOnTitan() {
+        stub.stub("graphql.anilist.co", json: """
         {"data":{"Page":{"media":[{
           "id":16498,"idMal":16498,"format":"TV","episodes":25,"popularity":837840,
           "status":"FINISHED","countryOfOrigin":"JP","averageScore":84,
@@ -34,8 +33,8 @@ extension TMDBRequestTests {
     }
 
     private func snapshot() async throws -> Snapshot {
-        stub()
-        return try #require(await AniListProvider(session: StubURLProtocol.session)
+        stubAttackOnTitan()
+        return try #require(await AniListProvider(transport: stub.transport)
             .snapshot(for: Lookup(search: "Attack on Titan")))
     }
 
@@ -97,14 +96,13 @@ extension TMDBRequestTests {
     /// `type: ANIME` is not `made in Japan`: AniList catalogues Chinese donghua
     /// and Korean aeni under it, and this used to answer `ja`/`JP` for both.
     @Test func donghuaIsNotJapanese() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("graphql.anilist.co", json: """
+        stub.stub("graphql.anilist.co", json: """
         {"data":{"Page":{"media":[{
           "id":1,"format":"TV","countryOfOrigin":"CN",
           "title":{"romaji":"Mo Dao Zu Shi"}}]}}}
         """)
 
-        let snapshot = try #require(await AniListProvider(session: StubURLProtocol.session)
+        let snapshot = try #require(await AniListProvider(transport: stub.transport)
             .snapshot(for: Lookup(search: "Mo Dao Zu Shi")))
 
         #expect(snapshot.originalLanguage == "zh")
@@ -113,12 +111,11 @@ extension TMDBRequestTests {
 
     /// Silence, not a guess, when AniList does not say.
     @Test func noCountryMeansNoClaim() async throws {
-        StubURLProtocol.reset()
-        StubURLProtocol.stub("graphql.anilist.co", json: """
+        stub.stub("graphql.anilist.co", json: """
         {"data":{"Page":{"media":[{"id":2,"format":"TV","title":{"romaji":"Unknown"}}]}}}
         """)
 
-        let snapshot = try #require(await AniListProvider(session: StubURLProtocol.session)
+        let snapshot = try #require(await AniListProvider(transport: stub.transport)
             .snapshot(for: Lookup(search: "Unknown")))
 
         #expect(snapshot.originalLanguage == nil)
@@ -133,4 +130,108 @@ extension TMDBRequestTests {
         #expect(ratings.first?.votes == 1000, "the distribution summed, not popularity's 837840")
     }
   }
+}
+
+struct AniListSearchTests {
+    let stub = Stub()
+
+    @Test func aniListChartsAskForTheKindAndSeasonAndReadEnglishFirst() async throws {
+        stub.respond { request in
+            var data = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+                stream.open()
+                defer { stream.close() }
+                var bytes = [UInt8](repeating: 0, count: 4096)
+                while case let count = stream.read(&bytes, maxLength: bytes.count), count > 0 {
+                    data.append(contentsOf: bytes.prefix(count))
+                }
+            }
+            let body = String(decoding: data, as: UTF8.self)
+            #expect(body.contains(#""format":["TV","TV_SHORT","ONA"]"#))
+            #expect(body.contains(#""season":"FALL""#) && body.contains(#""seasonYear":2026"#))
+            return .init(body: """
+            {"data":{"Page":{"media":[
+              {"id":16498,"idMal":16498,"title":{"romaji":"Shingeki no Kyojin","english":"Attack on Titan"},
+               "startDate":{"year":2013},"coverImage":{"extraLarge":"https://img.anili.st/c.jpg"}},
+              {"id":2,"title":{"romaji":"Only Romaji"}},
+              {"id":0,"title":{"romaji":"No id"}}]}}}
+            """)
+        }
+        let october = try #require(Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 10, day: 5)))
+        let titles = try await AniListProvider(transport: stub.transport)
+            .titles(in: .thisSeason, kind: .series, now: october)
+        #expect(titles.map(\.title) == ["Attack on Titan", "Only Romaji"])
+        #expect(titles.first?.ids == Identifiers(aniList: 16498, myAnimeList: 16498))
+        #expect(titles.first?.kind == .series)
+        #expect(titles.first?.posterURL != nil)
+    }
+
+    @Test func aGraphQLErrorIsNotAnEmptyChart() async {
+        stub.stub("graphql.anilist.co", json: #"{"data":null,"errors":[{"message":"x"}]}"#)
+        await #expect(throws: SlateError.graphQL(.aniList)) {
+            try await AniListProvider(transport: stub.transport).titles(in: .trending, kind: .movie)
+        }
+    }
+
+    @Test func broadcastSeasonsFollowTheJapaneseCalendar() {
+        func date(_ month: Int) -> Date {
+            Calendar(identifier: .gregorian).date(from: DateComponents(timeZone: .gmt, year: 2026, month: month, day: 15))!
+        }
+        #expect(AniListProvider.season(of: date(1)).season == "WINTER")
+        #expect(AniListProvider.season(of: date(5)).season == "SPRING")
+        #expect(AniListProvider.season(of: date(8)).season == "SUMMER")
+        #expect(AniListProvider.season(of: date(11)).season == "FALL")
+    }
+
+    @Test func anExactAnimeIDTakesPrecedenceOverSearchHints() async throws {
+        stub.stub("graphql.anilist.co", json: """
+        {"data":{"Page":{"media":[
+          {"id":1,"format":"MOVIE","popularity":100,"title":{"romaji":"Old name"}},
+          {"id":2,"format":"TV","startDate":{"year":1999},"title":{"romaji":"Correct title"}}]}}}
+        """)
+        let result = try await AniListProvider(transport: stub.transport).snapshot(
+            for: Lookup(ids: Identifiers(aniList: 2), query: "Old name", year: 2020, kind: .movie)
+        )
+        #expect(result?.ids.aniList == 2)
+    }
+
+    /// Announcements are often only "October 2027", or "2027": the first day of what's
+    /// known, and how much is.
+    @Test func anAnnouncedAnimeKeepsHowMuchOfItsDateIsKnown() async throws {
+        stub.stub("graphql.anilist.co", json: """
+        {"data":{"Page":{"media":[
+          {"id":1,"format":"TV","startDate":{"year":2026,"month":10,"day":2},"title":{"romaji":"Day"}},
+          {"id":2,"format":"TV","startDate":{"year":2027,"month":10},"title":{"romaji":"Month"}},
+          {"id":3,"format":"TV","startDate":{"year":2027},"title":{"romaji":"Year"}},
+          {"id":4,"format":"TV","startDate":{},"title":{"romaji":"Unknown"}}]}}}
+        """)
+        let titles = try await AniListProvider(transport: stub.transport).titles(in: .upcoming, kind: .series)
+
+        #expect(titles.map(\.releasePrecision) == [.day, .month, .year, nil])
+        #expect(titles[1].releaseDate == (try Date("2027-10-01T00:00:00Z", strategy: .iso8601)))
+        #expect(titles[3].releaseDate == nil)
+    }
+
+    @Test func animeSearchRespectsYearAndKind() async throws {
+        stub.stub("graphql.anilist.co", json: """
+        {"data":{"Page":{"media":[
+          {"id":1,"format":"TV","popularity":100,"startDate":{"year":2011},"title":{"romaji":"Hunter x Hunter"}},
+          {"id":2,"format":"MOVIE","popularity":50,"startDate":{"year":1999},"title":{"romaji":"Hunter x Hunter"}},
+          {"id":3,"format":"TV","popularity":10,"startDate":{"year":1999},"title":{"romaji":"Hunter x Hunter"}}]}}}
+        """)
+        let provider = AniListProvider(transport: stub.transport)
+        let result = try await provider.snapshot(for: Lookup(search: "Hunter x Hunter", year: 1999, kind: .series))
+        #expect(result?.ids.aniList == 3)
+    }
+
+    @Test func aFilteredSearchStopsAfterThreePages() async throws {
+        stub.stub("graphql.anilist.co", json: """
+        {"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[
+          {"id":1,"format":"TV","startDate":{"year":2011},"title":{"romaji":"Hunter x Hunter"}}]}}}
+        """)
+        let result = try await AniListProvider(transport: stub.transport)
+            .snapshot(for: Lookup(search: "Hunter x Hunter", year: 1999, kind: .series))
+        #expect(result == nil)
+        #expect(stub.requested.count == 3)
+    }
 }
