@@ -336,20 +336,30 @@ struct CorrectedSearchTests {
         #expect(people.map(\.id) == [1, 3], "the correction first, then what the query found")
     }
 
-    /// Typed as far as "sidney sw": the start of the name is misspelled and the rest isn't typed yet.
+    /// Typed as far as "sidney sw": the start of the name is misspelled and the rest isn't typed
+    /// yet. What TMDB's API answered on 2026-09-25: "Sidney sw" finds Sidney Sweibel and Matthew
+    /// Sweet, "sw" and "sid" never Sydney Sweeney, "Sydney sw" Sydney Sweeney first.
     @Test func aHalfTypedMisspelledNameFindsThePerson() async throws {
         stub.respond { request in
             let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
                 .queryItems?.first { $0.name == "query" }?.value
-            return .init(body: query == "sw"
-                ? #"{"results":[{"id":1,"name":"Sydney Sweeney","popularity":90},{"id":4,"name":"Tilda Swinton","popularity":40}]}"#
-                : #"{"results":[{"id":5,"name":"Sidney Sweibel","popularity":1},{"id":6,"name":"Matthew Sweet","popularity":2}]}"#)
+            let body = switch query {
+            case "sydney sw":
+                #"{"results":[{"id":1,"name":"Sydney Sweeney","popularity":14},{"id":7,"name":"Sydney Swihart","popularity":0.5}]}"#
+            case "sw":
+                #"{"results":[{"id":8,"name":"Andi SW","popularity":0.3},{"id":4,"name":"Tilda Swinton","popularity":4}]}"#
+            default:
+                #"{"results":[{"id":5,"name":"Sidney Sweibel","popularity":0.3},{"id":6,"name":"Matthew Sweet","popularity":0.8}]}"#
+            }
+            return .init(body: body)
         }
         let tmdb = TMDBProvider(accessToken: "t", transport: stub.transport)
         let (people, correction) = try await tmdb.searchPeople(correcting: "sidney sw")
         #expect(correction == "Sydney Sweeney")
         #expect(people.first?.id == 1)
         #expect(!people.contains { $0.id == 4 }, "a popular Sw… who isn't a Sidney stays out")
+        // The query, then the spelling that found her: nothing more asked.
+        #expect(stub.requested.count == 2)
     }
 
     @Test func editDistanceIgnoresCaseAndAccents() {
@@ -361,5 +371,9 @@ struct CorrectedSearchTests {
         #expect(TMDBProvider.nearbyQueries("up").isEmpty)
         // A last word still being typed is searched as it is: TMDB matches it as a name's start.
         #expect(TMDBProvider.nearbyQueries("sidney sw") == ["sw", "sid"])
+        // One letter swapped at a time, in words of four letters or more; two at most.
+        #expect(TMDBProvider.spellingVariants("sidney sw") == ["sydney sw", "sidnei sw"])
+        #expect(TMDBProvider.spellingVariants("Kylie Minogue") == ["Kilie Minogue", "Kylye Minogue"])
+        #expect(TMDBProvider.spellingVariants("tom hanks").isEmpty)
     }
 }

@@ -210,8 +210,11 @@ extension TMDBProvider {
         // whenever nobody carries the name exactly.
         if query.contains(" "), !people.contains(where: { Self.distance($0.name, query) == 0 }) {
             var near: [Person] = []
-            for nearby in Self.nearbyQueries(query) {
+            // The spelling first: the likeliest, and once a query finds the person, the rest
+            // aren't asked.
+            for nearby in Self.spellingVariants(query) + Self.nearbyQueries(query) {
                 near += (try? await searchPeople(nearby)) ?? []
+                if !Self.closeMatches(near, to: query, name: \.name).isEmpty { break }
             }
             try Task.checkCancellation()
             let close = Self.closeMatches(near, to: query, name: \.name)
@@ -223,6 +226,34 @@ extension TMDBProvider {
         }
         var seen = Set<Int>()
         return (people.filter { seen.insert($0.id).inserted }, correction)
+    }
+
+    /// The query with one i swapped for a y, or a y for an i, in its first long words: the
+    /// commonest slip in a name, which TMDB's website forgives and its API doesn't — "sidney sw"
+    /// finds nobody there, "sydney sw" finds Sydney Sweeney first. Two at most.
+    static func spellingVariants(_ query: String) -> [String] {
+        let characters = Array(query)
+        var variants: [String] = []
+        var start = 0
+        for word in query.split(separator: " ", omittingEmptySubsequences: false) {
+            defer { start += word.count + 1 }
+            guard word.count >= 4 else { continue }
+            for offset in 0..<word.count {
+                let index = start + offset
+                let swapped: Character? = switch characters[index] {
+                case "i": "y"
+                case "y": "i"
+                case "I": "Y"
+                case "Y": "I"
+                default: nil
+                }
+                guard let swapped, variants.count < 2 else { continue }
+                var changed = characters
+                changed[index] = swapped
+                variants.append(String(changed))
+            }
+        }
+        return variants
     }
 
     /// What to search when a query finds nothing close: a last word still being typed,
