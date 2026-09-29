@@ -6,6 +6,13 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.20.1] — 2026-09-29
+
+- `searchPeople(correcting:)` finds a name whose last word is still being typed
+  ("sidney sw"): that word is searched and matched as the start of a name.
+- When nobody close turns up, it retries with one `i`↔`y` swap in the longer words
+  (two tries at most), since TMDB's API forgives less than its website ("Sidney" → Sydney Sweeney).
+
 ## [0.20.0] — 2026-09-24
 
 - Responses persist on disk across launches (`Caches/Slate/<provider>/`, SHA-256 file names,
@@ -164,6 +171,8 @@ All notable changes to Slate. Format follows
 
 - First cut: `MetadataAggregator`, `Field`, `FieldKey`, provenance, `TMDBProvider`, `AniListProvider`.
 
+[Unreleased]: https://github.com/Nico8324/Slate/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/Nico8324/Slate/releases/tag/v0.20.1
 [0.20.0]: https://github.com/Nico8324/Slate/releases/tag/v0.20.0
 [0.19.0]: https://github.com/Nico8324/Slate/releases/tag/v0.19.0
 [0.18.0]: https://github.com/Nico8324/Slate/releases/tag/v0.18.0
@@ -175,6 +184,11 @@ All notable changes to Slate. Format follows
 [0.12.1]: https://github.com/Nico8324/Slate/releases/tag/v0.12.1
 [0.12.0]: https://github.com/Nico8324/Slate/releases/tag/v0.12.0
 [0.11.0]: https://github.com/Nico8324/Slate/releases/tag/v0.11.0
+[0.10.5]: https://github.com/Nico8324/Slate/releases/tag/v0.10.5
+[0.10.4]: https://github.com/Nico8324/Slate/releases/tag/v0.10.4
+[0.10.3]: https://github.com/Nico8324/Slate/releases/tag/v0.10.3
+[0.10.2]: https://github.com/Nico8324/Slate/releases/tag/v0.10.2
+[0.10.1]: https://github.com/Nico8324/Slate/releases/tag/v0.10.1
 [0.10.0]: https://github.com/Nico8324/Slate/releases/tag/v0.10.0
 [0.9.0]: https://github.com/Nico8324/Slate/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Nico8324/Slate/releases/tag/v0.8.0

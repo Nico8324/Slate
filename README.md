@@ -5,7 +5,7 @@
 **What is this?**
 A dependency-free Swift package that asks every metadata provider at once and answers with values that each say **where they came from**.
 
-[![Version](https://img.shields.io/badge/version-0.20.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.20.1-blue)](CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2026%20%7C%20iOS%2026%20%7C%20tvOS%2026%20%7C%20visionOS%2026-1793D1)](#installation)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-success)](#installation)
@@ -24,12 +24,12 @@ trailers for a viewer, and browses TMDB, AniList and MDBList charts. Slate settl
 | **CinemaResolvers** | *Where do I get it?* |
 | **Cinema** | *Where do I watch it?* |
 
-This README describes release 0.20.0.
+This README describes release 0.20.1.
 
 ## Installation
 
 ```swift
-.package(url: "https://github.com/Nico8324/Slate.git", from: "0.20.0")
+.package(url: "https://github.com/Nico8324/Slate.git", from: "0.20.1")
 ```
 
 ```swift
