@@ -3,9 +3,11 @@ import os
 
 /// Slate's logging, in one place so the privacy rules are decided once.
 ///
-/// Everything here goes to the unified log under subsystem `Slate`, so a
-/// consumer filters the whole package with `subsystem:Slate` and one area of it
-/// with `category:`. Nothing is printed, nothing is written to a file, and
+/// Everything here goes to the unified log under subsystem
+/// `com.nico8324.Slate`, so a consumer filters the whole package with
+/// `subsystem:com.nico8324.Slate` and one area of it with `category:`. HTTP
+/// lines land in the category of the provider that made the request (`tmdb`,
+/// `anilist`, `mdblist`), so a rate limit is found next to what it starved. Nothing is printed, nothing is written to a file, and
 /// nothing is retained by the package — `os.Logger` is the only dependency this
 /// adds, and it is not a package one.
 ///
@@ -30,14 +32,27 @@ import os
 /// built, and a token is not the kind of thing to be one debugger attach away
 /// from. See ``Log/redactingQuery(_:)``.
 enum Log {
-    static let http = Logger(subsystem: "Slate", category: "HTTP")
-    static let aggregator = Logger(subsystem: "Slate", category: "Aggregator")
-    static let tmdb = Logger(subsystem: "Slate", category: "TMDB")
-    static let aniList = Logger(subsystem: "Slate", category: "AniList")
-    static let mdbList = Logger(subsystem: "Slate", category: "MDBList")
-    static let bridge = Logger(subsystem: "Slate", category: "AnimeIDBridge")
-    static let seasons = Logger(subsystem: "Slate", category: "Seasons")
-    static let artwork = Logger(subsystem: "Slate", category: "Artwork")
+    static let subsystem = "com.nico8324.Slate"
+    static let http = Logger(subsystem: subsystem, category: "http")
+    static let aggregator = Logger(subsystem: subsystem, category: "aggregator")
+    static let tmdb = Logger(subsystem: subsystem, category: "tmdb")
+    static let aniList = Logger(subsystem: subsystem, category: "anilist")
+    static let mdbList = Logger(subsystem: subsystem, category: "mdblist")
+    static let bridge = Logger(subsystem: subsystem, category: "bridge")
+    static let seasons = Logger(subsystem: subsystem, category: "seasons")
+    static let cache = Logger(subsystem: subsystem, category: "cache")
+    static let artwork = Logger(subsystem: subsystem, category: "artwork")
+
+    /// The category a provider's requests are logged under; `http` for none.
+    static func of(_ provider: Provider?) -> Logger {
+        switch provider {
+        case .tmdb: tmdb
+        case .aniList: aniList
+        case .mdbList: mdbList
+        case .fribb: bridge
+        case nil: http
+        }
+    }
 
     /// The ids and shape a lookup carries, never what was typed.
     ///

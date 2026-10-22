@@ -6,6 +6,11 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+- Logs use subsystem `com.nico8324.Slate` (was `Slate`) and lowercase categories: `tmdb`, `anilist`,
+  `mdblist`, `bridge`, `seasons`, `artwork`, `aggregator`, `cache`. A request's retries, rate limits and
+  failures are logged under its provider's category rather than `HTTP`; a successful request is `.info`
+  (path, status, bytes, ms), a cache hit is `.info` under `cache`, and a failed disk write is an error there.
+
 ## [0.20.1] — 2026-09-29
 
 - `searchPeople(correcting:)` finds a name whose last word is still being typed

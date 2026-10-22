@@ -141,7 +141,11 @@ actor ResponseCache {
         // "Zero disables retention" — storing an entry already expired still
         // held the body in memory until something evicted it.
         guard lifetime > .zero, data.count <= byteLimit else { return }
-        if let file = file(for: key) { try? data.write(to: file, options: .atomic) }
+        if let file = file(for: key) {
+            do { try data.write(to: file, options: .atomic) } catch {
+                Log.cache.error("\(file.lastPathComponent, privacy: .public) not written to disk: \(Log.describe(error), privacy: .public)")
+            }
+        }
         remember(data, for: key, expires: .now.advanced(by: lifetime))
     }
 
@@ -266,7 +270,10 @@ struct HTTP: Sendable {
         let key = "\(method) \(url.absoluteString) \(body?.base64EncodedString() ?? "") \(encodedHeaders)"
         let prepared = request
         let data: Data
-        if let cache {
+        if let cached = await cache?.data(for: key) {
+            Log.cache.info("\(Log.redactingQuery(url), privacy: .public) — \(cached.count, privacy: .public) bytes from cache")
+            data = cached
+        } else if let cache {
             data = try await cache.data(for: key) { try await fetch(prepared) }
         } else {
             data = try await fetch(prepared)
@@ -277,13 +284,15 @@ struct HTTP: Sendable {
         } catch {
             // A 200 whose shape changed. Says which type failed, never the body, and
             // evicts it: a body that does not parse is not an answer worth keeping.
-            Log.http.error(
+            log.error(
                 "\(Log.redactingQuery(url), privacy: .public) — \(String(describing: Response.self), privacy: .public) did not decode: \(Log.describe(error), privacy: .public)"
             )
             await cache?.remove(key)
             throw error
         }
     }
+
+    private var log: Logger { Log.of(provider) }
 
     private func fetch(_ request: URLRequest) async throws -> Data {
         let endpoint = Log.redactingQuery(request.url!)
@@ -296,7 +305,7 @@ struct HTTP: Sendable {
         for attempt in 1...max(attempts, 1) {
             // Deliberately never the headers and never the query: one carries
             // the bearer token, the other carries what a person searched for.
-            Log.http.debug(
+            log.debug(
                 "\(method, privacy: .public) \(endpoint, privacy: .public) attempt \(attempt, privacy: .public)/\(max(self.attempts, 1), privacy: .public)"
             )
             try await limiter?.waitForTurn()
@@ -307,7 +316,7 @@ struct HTTP: Sendable {
             } catch let error as URLError where Self.isTransient(error) && attempt < attempts {
                 // A dropped connection is the network's hiccup, not the provider's
                 // answer; only 429 and 5xx were being retried.
-                Log.http.notice(
+                log.notice(
                     "\(endpoint, privacy: .public) — \(error.code.rawValue, privacy: .public), retrying in \(Self.backoff(attempt), privacy: .public)s"
                 )
                 try await Task.sleep(for: .seconds(Self.backoff(attempt)))
@@ -324,12 +333,12 @@ struct HTTP: Sendable {
                     await limiter?.pause(until: .now.advanced(by: .seconds(retryAfter ?? Self.backoff(attempt))))
                 }
                 guard attempt < attempts else {
-                    Log.http.error(
+                    log.error(
                         "\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public) on the last of \(max(self.attempts, 1), privacy: .public) attempts, giving up"
                     )
                     break
                 }
-                Log.http.notice(
+                log.notice(
                     "\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public), retrying in \(retryAfter ?? Self.backoff(attempt), privacy: .public)s"
                 )
                 // The server's own number where it gave one — it knows when the
@@ -343,17 +352,17 @@ struct HTTP: Sendable {
                 continue
             }
             if [401, 403].contains(http.statusCode), let provider {
-                Log.http.error("\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public), the credential was refused")
+                log.error("\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public), the credential was refused")
                 throw SlateError.missingCredential(provider)
             }
             guard (200..<300).contains(http.statusCode) else {
-                Log.http.error(
+                log.error(
                     "\(endpoint, privacy: .public) — HTTP \(http.statusCode, privacy: .public), \(data.count, privacy: .public) bytes"
                 )
                 throw SlateError.http(status: http.statusCode,
                                       body: String(decoding: data.prefix(512), as: UTF8.self))
             }
-            Log.http.debug(
+            log.info(
                 "\(endpoint, privacy: .public) — \(http.statusCode, privacy: .public), \(data.count, privacy: .public) bytes in \(started.duration(to: .now).milliseconds, privacy: .public)ms"
             )
             return data
@@ -361,10 +370,10 @@ struct HTTP: Sendable {
         // Rate limited only if that is what the last answer was. A server failing with 5xx on
         // every attempt is "this is broken", which callers treat differently from "slow down".
         guard lastStatus == 429 else {
-            Log.http.error("\(endpoint, privacy: .public) — HTTP \(lastStatus, privacy: .public) on every attempt")
+            log.error("\(endpoint, privacy: .public) — HTTP \(lastStatus, privacy: .public) on every attempt")
             throw SlateError.http(status: lastStatus, body: String(decoding: lastBody.prefix(512), as: UTF8.self))
         }
-        Log.http.error("\(endpoint, privacy: .public) — still rate limited after every attempt")
+        log.error("\(endpoint, privacy: .public) — still rate limited after every attempt")
         throw SlateError.rateLimited(retryAfter: lastRetryAfter)
     }
 
