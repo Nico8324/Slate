@@ -33,10 +33,20 @@ extension TMDBProvider {
     /// ``candidates(for:kind:page:)``, and when that finds nothing, the titles a few
     /// letters from `query` — "inceptoin" finds Inception — with the title found
     /// instead as `correction`.
+    ///
+    /// A film found with its collection brings the rest of the collection right
+    /// after it: page 1 of "star wars" is so full of shows and LEGO specials that
+    /// four of the nine Skywalker films weren't on it.
     public func candidates(
         correcting query: String, kind: Kind? = nil
     ) async throws -> (results: [Candidate], correction: String?) {
+        async let franchise = kind == .series ? [] : collectionFilms(matching: query)
         var results = try await candidates(for: query, kind: kind)
+        let parts = await franchise
+        if let at = results.firstIndex(where: { hit in parts.contains { $0.id == hit.id } }) {
+            let found = Set(results.map(\.id))
+            results.insert(contentsOf: parts.filter { !found.contains($0.id) }, at: at + 1)
+        }
         var correction: String?
         if results.isEmpty {
             var near: [Candidate] = []
@@ -50,6 +60,16 @@ extension TMDBProvider {
         }
         var seen = Set<String>()
         return (results.filter { seen.insert($0.id).inserted }, correction)
+    }
+
+    /// The films of the first collection `/search/collection` finds; none when
+    /// it finds none or fails — this only adds to a search, never breaks one.
+    private func collectionFilms(matching query: String) async -> [Candidate] {
+        guard let url = try? URL.build(Self.api, path: "/search/collection",
+                                       query: ["query": query, "language": language]),
+              let id = try? await http.json(CandidateResponse.self, url: url, headers: headers).results.first?.id
+        else { return [] }
+        return (try? await collection(id: id)) ?? []
     }
 
     /// A title's card — localized title, art, genre ids, language, popularity —

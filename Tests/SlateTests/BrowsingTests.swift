@@ -319,6 +319,30 @@ struct CorrectedSearchTests {
         let (results, correction) = try await tmdb.candidates(correcting: "up")
         #expect(results.map(\.title) == ["Up"])
         #expect(correction == nil)
+        #expect(stub.requested.filter { $0.path == "/3/search/multi" }.count == 1)
+    }
+
+    @Test func aFilmFoundBringsTheRestOfItsCollection() async throws {
+        stub.stub("/search/multi", json: """
+        {"results":[{"id":11,"media_type":"movie","title":"Star Wars"},
+                    {"id":1,"media_type":"tv","name":"Andor"},
+                    {"id":1893,"media_type":"movie","title":"The Phantom Menace"}]}
+        """)
+        stub.stub("/search/collection", json: #"{"results":[{"id":10,"name":"Star Wars Collection"}]}"#)
+        stub.stub("/collection/10", json: """
+        {"parts":[{"id":11,"title":"Star Wars","release_date":"1977-05-25"},
+                  {"id":1891,"title":"The Empire Strikes Back","release_date":"1980-05-20"},
+                  {"id":1893,"title":"The Phantom Menace","release_date":"1999-05-19"}]}
+        """)
+        let tmdb = TMDBProvider(accessToken: "t", transport: stub.transport)
+        let (results, _) = try await tmdb.candidates(correcting: "star wars")
+        #expect(results.map(\.title) == ["Star Wars", "The Empire Strikes Back", "Andor", "The Phantom Menace"])
+    }
+
+    @Test func aShowSearchDoesNotLookForCollections() async throws {
+        stub.stub("/search/tv", json: #"{"results":[{"id":1,"name":"Andor"}]}"#)
+        let tmdb = TMDBProvider(accessToken: "t", transport: stub.transport)
+        _ = try await tmdb.candidates(correcting: "andor", kind: .series)
         #expect(stub.requested.count == 1)
     }
 
