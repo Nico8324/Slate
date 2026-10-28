@@ -6,6 +6,12 @@ All notable changes to Slate. Format follows
 
 ## [Unreleased]
 
+## [0.20.2] — 2026-10-28
+
+- `candidates(correcting:)` brings the rest of a found film's collection right after it: alongside
+  `/search/multi` it asks `/search/collection`, and the films of the first collection go in after
+  the first of them already found ("star wars" lacked four of the nine Skywalker films). Not for
+  `kind: .series`; a failure only leaves them out.
 - Logs use subsystem `com.nico8324.Slate` (was `Slate`) and lowercase categories: `tmdb`, `anilist`,
   `mdblist`, `bridge`, `seasons`, `artwork`, `aggregator`, `cache`. A request's retries, rate limits and
   failures are logged under its provider's category rather than `HTTP`; a successful request is `.info`
@@ -176,7 +182,8 @@ All notable changes to Slate. Format follows
 
 - First cut: `MetadataAggregator`, `Field`, `FieldKey`, provenance, `TMDBProvider`, `AniListProvider`.
 
-[Unreleased]: https://github.com/Nico8324/Slate/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/Nico8324/Slate/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/Nico8324/Slate/releases/tag/v0.20.2
 [0.20.1]: https://github.com/Nico8324/Slate/releases/tag/v0.20.1
 [0.20.0]: https://github.com/Nico8324/Slate/releases/tag/v0.20.0
 [0.19.0]: https://github.com/Nico8324/Slate/releases/tag/v0.19.0
